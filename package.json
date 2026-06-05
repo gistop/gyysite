@@ -3,10 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    ".",
+    "apps/api"
+  ],
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "dev:api": "npm --workspace apps/api run dev",
+    "start:api": "npm --workspace apps/api start",
+    "compose:up": "docker compose up --build"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

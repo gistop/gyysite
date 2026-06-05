@@ -11,7 +11,8 @@ import {
   Folder,
   Loader2,
   Play,
-  RotateCcw
+  RotateCcw,
+  UploadCloud
 } from "lucide-react";
 import "./styles.css";
 
@@ -24,14 +25,122 @@ const templates = {
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Hello HTML</title>
+    <title>首页 - 星河科技</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main>
-      <h1>Hello HTML</h1>
-      <p>Edit the files and press Run.</p>
-      <button id="counter">Clicked 0 times</button>
+    <header class="site-header">
+      <a class="logo" href="./index.html">星河科技</a>
+      <nav>
+        <a class="active" href="./index.html">首页</a>
+        <a href="./products.html">产品介绍</a>
+        <a href="./contact.html">联系我们</a>
+      </nav>
+    </header>
+
+    <main class="hero">
+      <section>
+        <p class="eyebrow">Digital operations platform</p>
+        <h1>让业务系统更清晰、更高效地运转</h1>
+        <p class="lead">星河科技为企业提供数据看板、自动化流程和客户协作工具，帮助团队把复杂工作整理成可执行的日常。</p>
+        <a class="button" href="./products.html">查看产品</a>
+      </section>
+      <section class="hero-panel">
+        <h2>今日概览</h2>
+        <div class="metric">
+          <span>项目交付率</span>
+          <strong>96%</strong>
+        </div>
+        <div class="metric">
+          <span>客户响应时间</span>
+          <strong>12m</strong>
+        </div>
+      </section>
+    </main>
+    <script src="./script.js"></script>
+  </body>
+</html>`,
+      "products.html": `<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>产品介绍 - 星河科技</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="logo" href="./index.html">星河科技</a>
+      <nav>
+        <a href="./index.html">首页</a>
+        <a class="active" href="./products.html">产品介绍</a>
+        <a href="./contact.html">联系我们</a>
+      </nav>
+    </header>
+
+    <main class="page">
+      <p class="eyebrow">Products</p>
+      <h1>三套工具，覆盖企业核心协作场景</h1>
+      <section class="product-grid">
+        <article>
+          <h2>数据驾驶舱</h2>
+          <p>统一展示销售、运营和项目指标，让管理层快速判断业务状态。</p>
+        </article>
+        <article>
+          <h2>流程自动化</h2>
+          <p>把审批、提醒、分派和归档串联起来，减少重复录入和手工跟进。</p>
+        </article>
+        <article>
+          <h2>客户协作门户</h2>
+          <p>为客户提供项目进度、文件交付和在线反馈入口，沟通更透明。</p>
+        </article>
+      </section>
+    </main>
+    <script src="./script.js"></script>
+  </body>
+</html>`,
+      "contact.html": `<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>联系我们 - 星河科技</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="logo" href="./index.html">星河科技</a>
+      <nav>
+        <a href="./index.html">首页</a>
+        <a href="./products.html">产品介绍</a>
+        <a class="active" href="./contact.html">联系我们</a>
+      </nav>
+    </header>
+
+    <main class="page contact-layout">
+      <section>
+        <p class="eyebrow">Contact</p>
+        <h1>告诉我们你的业务目标</h1>
+        <p class="lead">我们会在一个工作日内回复，并给出适合当前阶段的产品方案。</p>
+        <ul class="contact-list">
+          <li>电话：400-800-2026</li>
+          <li>邮箱：hello@example.com</li>
+          <li>地址：上海市浦东新区创新大道 88 号</li>
+        </ul>
+      </section>
+      <form class="contact-form">
+        <label>
+          姓名
+          <input type="text" placeholder="请输入姓名" />
+        </label>
+        <label>
+          联系方式
+          <input type="email" placeholder="name@example.com" />
+        </label>
+        <label>
+          需求
+          <textarea rows="4" placeholder="简单描述你的需求"></textarea>
+        </label>
+        <button type="submit">提交咨询</button>
+      </form>
     </main>
     <script src="./script.js"></script>
   </body>
@@ -39,32 +148,212 @@ const templates = {
       "style.css": `body {
   margin: 0;
   min-height: 100vh;
-  display: grid;
-  place-items: center;
   font-family: Inter, system-ui, sans-serif;
-  background: #f3f7fb;
+  background: #f4f7fb;
   color: #172033;
 }
 
-main {
-  width: min(520px, calc(100vw - 32px));
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
-button {
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px min(5vw, 56px);
+  border-bottom: 1px solid #dbe4ef;
+  background: #ffffff;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+nav a {
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #516173;
+  font-weight: 700;
+}
+
+nav a.active,
+nav a:hover {
+  background: #172033;
+  color: #ffffff;
+}
+
+.hero,
+.page {
+  width: min(1120px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 64px 0;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  align-items: center;
+  gap: 48px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #1769e0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  max-width: 760px;
+  font-size: 42px;
+  line-height: 1.15;
+}
+
+.lead {
+  max-width: 680px;
+  margin: 18px 0 0;
+  color: #526170;
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.button,
+.contact-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  margin-top: 26px;
   border: 0;
   border-radius: 8px;
-  padding: 10px 14px;
+  padding: 0 16px;
   background: #1769e0;
   color: white;
   cursor: pointer;
-}`,
-      "script.js": `let count = 0;
-const button = document.querySelector("#counter");
+  font-weight: 800;
+}
 
-button.addEventListener("click", () => {
-  count += 1;
-  button.textContent = \`Clicked \${count} times\`;
-});`
+.hero-panel,
+.product-grid article,
+.contact-form {
+  border: 1px solid #d9e3ee;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgba(23, 32, 51, 0.08);
+}
+
+.hero-panel {
+  padding: 28px;
+}
+
+.hero-panel h2,
+.product-grid h2 {
+  margin: 0 0 16px;
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 0;
+  border-top: 1px solid #e5edf5;
+}
+
+.metric strong {
+  color: #1769e0;
+  font-size: 28px;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+}
+
+.product-grid article {
+  padding: 24px;
+}
+
+.product-grid p,
+.contact-list {
+  color: #526170;
+  line-height: 1.7;
+}
+
+.contact-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 42px;
+}
+
+.contact-list {
+  padding-left: 18px;
+}
+
+.contact-form {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.contact-form label {
+  display: grid;
+  gap: 7px;
+  color: #334155;
+  font-weight: 800;
+}
+
+.contact-form input,
+.contact-form textarea {
+  width: 100%;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  padding: 11px 12px;
+  font: inherit;
+  resize: vertical;
+}
+
+@media (max-width: 760px) {
+  .site-header,
+  .hero,
+  .contact-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .site-header {
+    display: grid;
+  }
+
+  .product-grid {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 32px;
+  }
+}`,
+      "script.js": `const form = document.querySelector(".contact-form");
+
+if (form) {
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    alert("咨询已提交，我们会尽快联系你。");
+  });
+}`
     }
   },
   react: {
@@ -231,8 +520,8 @@ async function ensureEsbuild() {
   return esbuildReady;
 }
 
-function makeHtmlPreview(files) {
-  let html = files["index.html"] ?? "";
+function makeHtmlPreview(files, entry) {
+  let html = files[entry] ?? files["index.html"] ?? "";
   html = html.replace(
     /<link\s+[^>]*href=["']\.\/style\.css["'][^>]*>/i,
     `<style>${files["style.css"] ?? ""}</style>`
@@ -241,7 +530,27 @@ function makeHtmlPreview(files) {
     /<script\s+[^>]*src=["']\.\/script\.js["'][^>]*><\/script>/i,
     `<script>${files["script.js"] ?? ""}<\/script>`
   );
-  return html;
+  const navigationScript = `<script>
+document.addEventListener("click", function (event) {
+  const link = event.target.closest("a[href]");
+  if (!link) return;
+
+  const href = link.getAttribute("href");
+  if (!href || href.startsWith("#") || /^[a-zA-Z][a-zA-Z\\d+.-]*:/.test(href)) return;
+
+  const path = href.replace(/^\\.\\//, "").split("#")[0].split("?")[0];
+  if (!path.endsWith(".html")) return;
+
+  event.preventDefault();
+  window.parent.postMessage({ type: "preview:navigate", path }, "*");
+});
+<\/script>`;
+
+  if (html.includes("</body>")) {
+    return html.replace("</body>", `${navigationScript}</body>`);
+  }
+
+  return `${html}${navigationScript}`;
 }
 
 function compileVueFile(path, source) {
@@ -344,7 +653,7 @@ function sandboxPlugin(files) {
 }
 
 async function bundleProject(mode, files, entry) {
-  if (mode === "html") return makeHtmlPreview(files);
+  if (mode === "html") return makeHtmlPreview(files, entry);
 
   await ensureEsbuild();
   const result = await esbuild.build({
@@ -386,16 +695,20 @@ function App() {
   const [preview, setPreview] = useState("");
   const [error, setError] = useState("");
   const [isRunning, setIsRunning] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployResult, setDeployResult] = useState(null);
   const [isEditorReady, setIsEditorReady] = useState(false);
   const frameRef = useRef(null);
 
   const fileNames = useMemo(() => Object.keys(files), [files]);
 
-  async function runProject() {
+  async function runProject(entryOverride) {
     setIsRunning(true);
     setError("");
     try {
-      const html = await bundleProject(mode, files, templates[mode].entry);
+      const entry =
+        entryOverride ?? (mode === "html" && activeFile.endsWith(".html") ? activeFile : templates[mode].entry);
+      const html = await bundleProject(mode, files, entry);
       setPreview(html);
     } catch (err) {
       setError(err.message || String(err));
@@ -410,11 +723,58 @@ function App() {
     setActiveFile(templates[nextMode].entry);
     setPreview("");
     setError("");
+    setDeployResult(null);
+  }
+
+  async function deployHtmlProject() {
+    if (mode !== "html") return;
+
+    setIsDeploying(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/deploy/html", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          siteId: "demo-html-site",
+          files
+        })
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Deploy failed");
+      }
+
+      setDeployResult(result);
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setIsDeploying(false);
+    }
   }
 
   useEffect(() => {
     runProject();
   }, []);
+
+  useEffect(() => {
+    function handlePreviewMessage(event) {
+      if (mode !== "html" || event.data?.type !== "preview:navigate") return;
+
+      const path = normalizePath(event.data.path);
+      if (!path.endsWith(".html") || files[path] == null) return;
+
+      setActiveFile(path);
+      runProject(path);
+    }
+
+    window.addEventListener("message", handlePreviewMessage);
+    return () => window.removeEventListener("message", handlePreviewMessage);
+  }, [mode, files]);
 
   return (
     <div className="app-shell">
@@ -439,7 +799,13 @@ function App() {
           <button type="button" className="icon-button" title="Reset template" onClick={() => switchMode(mode)}>
             <RotateCcw size={18} />
           </button>
-          <button type="button" className="run-button" onClick={runProject} disabled={isRunning}>
+          {mode === "html" && (
+            <button type="button" className="deploy-button" onClick={deployHtmlProject} disabled={isDeploying}>
+              {isDeploying ? <Loader2 size={17} className="spin" /> : <UploadCloud size={17} />}
+              {isDeploying ? "Publishing" : "Publish"}
+            </button>
+          )}
+          <button type="button" className="run-button" onClick={() => runProject()} disabled={isRunning}>
             {isRunning ? <Loader2 size={17} className="spin" /> : <Play size={17} />}
             {isRunning ? "Running" : "Run"}
           </button>
@@ -494,7 +860,19 @@ function App() {
         </section>
 
         <section className="preview-panel">
-          <div className="panel-title">Preview</div>
+          <div className="panel-title">
+            <span>Preview</span>
+            {deployResult && (
+              <a
+                className="deploy-link"
+                href={deployResult.ossUrl || deployResult.localUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Published
+              </a>
+            )}
+          </div>
           {error ? (
             <div className="error-box">
               <AlertTriangle size={18} />
