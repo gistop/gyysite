@@ -6,6 +6,7 @@ import wasmURL from "esbuild-wasm/esbuild.wasm?url";
 import { compileScript, compileStyle, compileTemplate, parse } from "@vue/compiler-sfc";
 import {
   AlertTriangle,
+  Bot,
   Code2,
   FileCode2,
   Folder,
@@ -698,6 +699,10 @@ function App() {
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState(null);
   const [isEditorReady, setIsEditorReady] = useState(false);
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [aiSummary, setAiSummary] = useState("");
+  const [isAiEditing, setIsAiEditing] = useState(false);
+  const [aiSnapshot, setAiSnapshot] = useState(null);
   const frameRef = useRef(null);
 
   const fileNames = useMemo(() => Object.keys(files), [files]);
@@ -755,6 +760,69 @@ function App() {
     } finally {
       setIsDeploying(false);
     }
+  }
+
+  async function editHtmlWithAi() {
+    if (mode !== "html" || isAiEditing) return;
+
+    const instruction = aiInstruction.trim();
+    if (!instruction) {
+      setError("请先输入要让 AI 修改的需求");
+      return;
+    }
+
+    setIsAiEditing(true);
+    setError("");
+    setAiSummary("");
+    setAiSnapshot({ files, activeFile, preview });
+
+    try {
+      const response = await fetch("/api/ai/edit-html", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          instruction,
+          activeFile,
+          files
+        })
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "AI 修改失败");
+      }
+
+      const nextFiles = {
+        ...files,
+        ...result.files
+      };
+      const nextActiveFile = result.files[activeFile] != null ? activeFile : Object.keys(result.files)[0] || activeFile;
+      const entry = nextActiveFile.endsWith(".html") ? nextActiveFile : templates.html.entry;
+      const html = await bundleProject("html", nextFiles, entry);
+
+      setFiles(nextFiles);
+      setActiveFile(nextActiveFile);
+      setPreview(html);
+      setAiSummary(result.summary || "AI 已完成修改");
+      setAiInstruction("");
+      setDeployResult(null);
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setIsAiEditing(false);
+    }
+  }
+
+  function undoAiEdit() {
+    if (!aiSnapshot) return;
+
+    setFiles(aiSnapshot.files);
+    setActiveFile(aiSnapshot.activeFile);
+    setPreview(aiSnapshot.preview);
+    setAiSummary("已撤销上次 AI 修改");
+    setAiSnapshot(null);
   }
 
   useEffect(() => {
@@ -857,6 +925,36 @@ function App() {
               wordWrap: "on"
             }}
           />
+          {mode === "html" && (
+            <div className="ai-panel">
+              <div className="ai-title">
+                <span>
+                  <Bot size={16} />
+                  AI 修改 HTML
+                </span>
+                {aiSummary && <span className="ai-summary">{aiSummary}</span>}
+              </div>
+              <div className="ai-controls">
+                <textarea
+                  value={aiInstruction}
+                  onChange={(event) => setAiInstruction(event.target.value)}
+                  placeholder="例如：把首页改成一家咖啡店官网，增加菜单区域和预约按钮"
+                  rows={3}
+                  disabled={isAiEditing}
+                />
+                <div className="ai-actions">
+                  <button type="button" className="ai-undo-button" onClick={undoAiEdit} disabled={!aiSnapshot || isAiEditing}>
+                    <RotateCcw size={16} />
+                    撤销
+                  </button>
+                  <button type="button" className="ai-edit-button" onClick={editHtmlWithAi} disabled={isAiEditing}>
+                    {isAiEditing ? <Loader2 size={16} className="spin" /> : <Bot size={16} />}
+                    {isAiEditing ? "修改中" : "让 AI 修改"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="preview-panel">

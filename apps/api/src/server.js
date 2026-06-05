@@ -5,6 +5,8 @@ import process from "node:process";
 import OSS from "ali-oss";
 import cors from "cors";
 import express from "express";
+import OpenAI from "openai";
+import "dotenv/config";
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -24,6 +26,10 @@ const contentTypes = new Map([
   [".jpeg", "image/jpeg"],
   [".webp", "image/webp"]
 ]);
+const deepseek = new OpenAI({
+  baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
+  apiKey: process.env.DEEPSEEK_API_KEY || "missing-key"
+});
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || true }));
 app.use(express.json({ limit: process.env.JSON_LIMIT || "4mb" }));
@@ -90,6 +96,77 @@ function validateHtmlFiles(files) {
   }
 
   return normalizedFiles;
+}
+
+function validateReturnedHtmlFiles(files) {
+  if (!files || typeof files !== "object" || Array.isArray(files)) {
+    throw new Error("AI response files must be an object");
+  }
+
+  const normalizedFiles = {};
+  let totalBytes = 0;
+
+  for (const [filePath, content] of Object.entries(files)) {
+    if (typeof content !== "string") {
+      throw new Error(`AI response file content must be text: ${filePath}`);
+    }
+
+    const normalizedPath = normalizeProjectPath(filePath);
+    totalBytes += Buffer.byteLength(content, "utf8");
+    if (totalBytes > maxTotalBytes) throw new Error(`AI response is too large. Max bytes: ${maxTotalBytes}`);
+
+    normalizedFiles[normalizedPath] = content;
+  }
+
+  if (!Object.keys(normalizedFiles).length) {
+    throw new Error("AI response did not include any files");
+  }
+
+  return normalizedFiles;
+}
+
+function parseJsonObject(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const start = content.indexOf("{");
+    const end = content.lastIndexOf("}");
+
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error("AI response was not valid JSON");
+    }
+
+    return JSON.parse(content.slice(start, end + 1));
+  }
+}
+
+function buildHtmlEditMessages({ instruction, activeFile, files }) {
+  const serializedFiles = JSON.stringify(Object.fromEntries(files), null, 2);
+
+  return [
+    {
+      role: "system",
+      content: [
+        "You are a frontend code editing assistant for a browser-only HTML project.",
+        "Return JSON only. Do not return Markdown, code fences, or explanations outside JSON.",
+        "The JSON shape must be: {\"summary\":\"short Chinese summary\",\"files\":{\"path\":\"full updated file content\"}}.",
+        "Only edit files that belong to the given HTML project.",
+        "Use complete file contents for every changed file.",
+        "Keep the project directly runnable in a browser.",
+        "Do not add backend code or require a build step.",
+        "Avoid external scripts and remote dependencies unless the user explicitly asks for them."
+      ].join("\n")
+    },
+    {
+      role: "user",
+      content: [
+        `Active file: ${activeFile}`,
+        `User instruction: ${instruction}`,
+        "Current project files JSON:",
+        serializedFiles
+      ].join("\n\n")
+    }
+  ];
 }
 
 async function writeLocalSite(siteId, files) {
@@ -165,6 +242,56 @@ app.post("/api/deploy/html", async (req, res) => {
     res.status(400).json({
       ok: false,
       error: error.message || String(error)
+    });
+  }
+});
+
+app.post("/api/ai/edit-html", async (req, res) => {
+  try {
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return res.status(500).json({
+        ok: false,
+        error: "缺少环境变量 DEEPSEEK_API_KEY"
+      });
+    }
+
+    const instruction = String(req.body?.instruction || "").trim();
+    if (!instruction) {
+      return res.status(400).json({
+        ok: false,
+        error: "请先输入修改需求"
+      });
+    }
+
+    const files = validateHtmlFiles(req.body?.files);
+    const activeFile = normalizeProjectPath(req.body?.activeFile || "index.html");
+    if (!files.has(activeFile)) {
+      throw new Error(`Active file not found: ${activeFile}`);
+    }
+
+    const completion = await deepseek.chat.completions.create({
+      model: process.env.DEEPSEEK_MODEL || "deepseek-v4-pro",
+      messages: buildHtmlEditMessages({ instruction, activeFile, files }),
+      response_format: { type: "json_object" },
+      stream: false
+    });
+
+    const content = completion.choices?.[0]?.message?.content || "";
+    const parsed = parseJsonObject(content);
+    const changedFiles = validateReturnedHtmlFiles(parsed.files);
+
+    res.json({
+      ok: true,
+      summary: typeof parsed.summary === "string" ? parsed.summary : "AI 已完成修改",
+      files: changedFiles
+    });
+  } catch (error) {
+    const status = error.status || 400;
+    const message = error.response?.data?.error?.message || error.message || "DeepSeek API 调用失败";
+
+    res.status(status).json({
+      ok: false,
+      error: message
     });
   }
 });
