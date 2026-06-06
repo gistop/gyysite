@@ -11,10 +11,17 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
 }
 
 button {
@@ -22,9 +29,11 @@ button {
 }
 
 .app-shell {
-  min-height: 100vh;
+  position: fixed;
+  inset: 0;
   display: grid;
   grid-template-rows: 58px minmax(0, 1fr);
+  overflow: hidden;
   background: #eef2f6;
 }
 
@@ -136,6 +145,7 @@ button {
   grid-template-columns: 220px minmax(360px, 1.1fr) minmax(360px, 0.9fr);
   gap: 12px;
   padding: 12px;
+  overflow: hidden;
 }
 
 .file-panel,
@@ -158,6 +168,7 @@ button {
 
 .editor-panel {
   grid-template-rows: 42px minmax(0, 1fr) auto;
+  height: 100%;
 }
 
 .panel-title {
@@ -408,6 +419,12 @@ button {
   .workspace {
     grid-template-columns: 1fr;
     grid-template-rows: 150px 440px 360px;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .workspace::-webkit-scrollbar {
+    display: none;
   }
 
   .file-panel {

@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import * as ReactDOMClientRuntime from "react-dom/client";
 import Editor from "@monaco-editor/react";
 import * as esbuild from "esbuild-wasm";
 import wasmURL from "esbuild-wasm/esbuild.wasm?url";
 import { compileScript, compileStyle, compileTemplate, parse } from "@vue/compiler-sfc";
+import * as VueRuntime from "vue";
 import {
   AlertTriangle,
   Bot,
@@ -16,6 +18,18 @@ import {
   UploadCloud
 } from "lucide-react";
 import "./styles.css";
+
+const runtimeConfig = {
+  // "remote" = 模式A：沿用 esm.sh；"local" = 模式B：固定依赖本地化。
+  dependencySource: "local",
+  prewarmEsbuild: true
+};
+
+window.__sandboxRuntimeDeps = {
+  React,
+  ReactDOMClient: ReactDOMClientRuntime,
+  Vue: VueRuntime
+};
 
 const templates = {
   html: {
@@ -484,6 +498,234 @@ button {
 
 let esbuildReady;
 
+const localDependencyModules = {
+  react: `
+const React = window.parent.__sandboxRuntimeDeps.React;
+export default React;
+export const {
+  Children,
+  Component,
+  Fragment,
+  Profiler,
+  PureComponent,
+  StrictMode,
+  Suspense,
+  cloneElement,
+  createContext,
+  createElement,
+  createRef,
+  forwardRef,
+  isValidElement,
+  lazy,
+  memo,
+  startTransition,
+  use,
+  useActionState,
+  useCallback,
+  useContext,
+  useDebugValue,
+  useDeferredValue,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useInsertionEffect,
+  useLayoutEffect,
+  useMemo,
+  useOptimistic,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+  version
+} = React;
+`,
+  "react-dom/client": `
+const ReactDOMClient = window.parent.__sandboxRuntimeDeps.ReactDOMClient;
+export const { createRoot, hydrateRoot, version } = ReactDOMClient;
+`,
+  vue: `
+const Vue = window.parent.__sandboxRuntimeDeps.Vue;
+export const {
+  BaseTransition,
+  Comment,
+  EffectScope,
+  Fragment,
+  KeepAlive,
+  ReactiveEffect,
+  Static,
+  Suspense,
+  Teleport,
+  Text,
+  Transition,
+  TransitionGroup,
+  callWithAsyncErrorHandling,
+  callWithErrorHandling,
+  cloneVNode,
+  computed,
+  createBlock,
+  createCommentVNode,
+  createElementBlock,
+  createElementVNode,
+  createHydrationRenderer,
+  createPropsRestProxy,
+  createRenderer,
+  createSlots,
+  createStaticVNode,
+  createTextVNode,
+  createVNode,
+  customRef,
+  defineAsyncComponent,
+  defineComponent,
+  defineEmits,
+  defineExpose,
+  defineModel,
+  defineOptions,
+  defineProps,
+  defineSlots,
+  devtools,
+  effect,
+  effectScope,
+  getCurrentInstance,
+  getCurrentScope,
+  getCurrentWatcher,
+  h,
+  handleError,
+  hasInjectionContext,
+  hydrate,
+  hydrateOnIdle,
+  hydrateOnInteraction,
+  hydrateOnMediaQuery,
+  hydrateOnVisible,
+  initCustomFormatter,
+  inject,
+  isMemoSame,
+  isProxy,
+  isReactive,
+  isReadonly,
+  isRef,
+  isRuntimeOnly,
+  isShallow,
+  markRaw,
+  mergeDefaults,
+  mergeModels,
+  mergeProps,
+  nextTick,
+  normalizeClass,
+  normalizeProps,
+  normalizeStyle,
+  onActivated,
+  onBeforeMount,
+  onBeforeUnmount,
+  onBeforeUpdate,
+  onDeactivated,
+  onErrorCaptured,
+  onMounted,
+  onRenderTracked,
+  onRenderTriggered,
+  onScopeDispose,
+  onServerPrefetch,
+  onUnmounted,
+  onUpdated,
+  onWatcherCleanup,
+  openBlock,
+  popScopeId,
+  provide,
+  proxyRefs,
+  pushScopeId,
+  queuePostFlushCb,
+  reactive,
+  readonly,
+  ref,
+  registerRuntimeCompiler,
+  render,
+  renderList,
+  renderSlot,
+  resolveComponent,
+  resolveDirective,
+  resolveDynamicComponent,
+  resolveFilter,
+  resolveTransitionHooks,
+  setBlockTracking,
+  setDevtoolsHook,
+  setTransitionHooks,
+  shallowReactive,
+  shallowReadonly,
+  shallowRef,
+  ssrContextKey,
+  ssrUtils,
+  stop,
+  toDisplayString,
+  toHandlerKey,
+  toHandlers,
+  toRaw,
+  toRef,
+  toRefs,
+  toValue,
+  transformVNodeArgs,
+  triggerRef,
+  unref,
+  useAttrs,
+  useCssModule,
+  useCssVars,
+  useHost,
+  useId,
+  useModel,
+  useSSRContext,
+  useShadowRoot,
+  useSlots,
+  useTemplateRef,
+  useTransitionState,
+  vModelCheckbox,
+  vModelDynamic,
+  vModelRadio,
+  vModelSelect,
+  vModelText,
+  vShow,
+  version,
+  warn,
+  watch,
+  watchEffect,
+  watchPostEffect,
+  watchSyncEffect,
+  withAsyncContext,
+  withCtx,
+  withDefaults,
+  withDirectives,
+  withKeys,
+  withMemo,
+  withModifiers,
+  withScopeId
+} = Vue;
+
+function mountInPreviewDocument(app) {
+  const originalMount = app.mount;
+  app.mount = (containerOrSelector, ...args) => {
+    const container =
+      typeof containerOrSelector === "string" ? window.document.querySelector(containerOrSelector) : containerOrSelector;
+    return originalMount.call(app, container, ...args);
+  };
+  return app;
+}
+
+export function createApp(...args) {
+  return mountInPreviewDocument(Vue.createApp(...args));
+}
+
+export function createSSRApp(...args) {
+  return mountInPreviewDocument(Vue.createSSRApp(...args));
+}
+
+const previewVue = {
+  ...Vue,
+  createApp,
+  createSSRApp
+};
+
+export default previewVue;
+`
+};
+
 function normalizePath(path, base = "") {
   if (path.startsWith("/")) return path.slice(1);
   const stack = base ? base.split("/").filter(Boolean) : [];
@@ -588,7 +830,7 @@ document.head.appendChild(style);
 export default __sfc__;`;
 }
 
-function sandboxPlugin(files) {
+function sandboxPlugin(files, onStatus) {
   return {
     name: "sandbox-files",
     setup(build) {
@@ -602,6 +844,9 @@ function sandboxPlugin(files) {
         if (files[localPath] != null) {
           return { path: localPath, namespace: "sandbox" };
         }
+        if (runtimeConfig.dependencySource === "local" && localDependencyModules[args.path]) {
+          return { path: args.path, namespace: "local-dependency" };
+        }
         return {
           path: `https://esm.sh/${args.path}?dev`,
           namespace: "http-url"
@@ -614,6 +859,7 @@ function sandboxPlugin(files) {
       }));
 
       build.onLoad({ filter: /.*/, namespace: "http-url" }, async (args) => {
+        onStatus?.("Loading dependencies");
         const response = await fetch(args.path);
         if (!response.ok) throw new Error(`Failed to fetch ${args.path}`);
         return {
@@ -622,6 +868,11 @@ function sandboxPlugin(files) {
           resolveDir: args.path
         };
       });
+
+      build.onLoad({ filter: /.*/, namespace: "local-dependency" }, (args) => ({
+        contents: localDependencyModules[args.path],
+        loader: "js"
+      }));
 
       build.onResolve({ filter: /^\.{1,2}\// }, (args) => {
         const base = args.importer.includes("/") ? args.importer.split("/").slice(0, -1).join("/") : "";
@@ -653,10 +904,12 @@ function sandboxPlugin(files) {
   };
 }
 
-async function bundleProject(mode, files, entry) {
+async function bundleProject(mode, files, entry, onStatus) {
   if (mode === "html") return makeHtmlPreview(files, entry);
 
+  onStatus?.("Initializing");
   await ensureEsbuild();
+  onStatus?.(runtimeConfig.dependencySource === "local" ? "Building" : "Loading dependencies");
   const result = await esbuild.build({
     entryPoints: [entry],
     bundle: true,
@@ -669,9 +922,10 @@ async function bundleProject(mode, files, entry) {
       __VUE_PROD_DEVTOOLS__: "false",
       __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: "false"
     },
-    plugins: [sandboxPlugin(files)]
+    plugins: [sandboxPlugin(files, onStatus)]
   });
 
+  onStatus?.("Rendering");
   const js = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text ?? "";
   const css = result.outputFiles.find((file) => file.path.endsWith(".css"))?.text ?? "";
 
@@ -690,12 +944,13 @@ async function bundleProject(mode, files, entry) {
 }
 
 function App() {
-  const [mode, setMode] = useState("react");
-  const [files, setFiles] = useState(templates.react.files);
-  const [activeFile, setActiveFile] = useState(templates.react.entry);
+  const [mode, setMode] = useState("html");
+  const [files, setFiles] = useState(templates.html.files);
+  const [activeFile, setActiveFile] = useState(templates.html.entry);
   const [preview, setPreview] = useState("");
   const [error, setError] = useState("");
   const [isRunning, setIsRunning] = useState(false);
+  const [runStatus, setRunStatus] = useState("Running");
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState(null);
   const [isEditorReady, setIsEditorReady] = useState(false);
@@ -706,14 +961,17 @@ function App() {
   const frameRef = useRef(null);
 
   const fileNames = useMemo(() => Object.keys(files), [files]);
+  const previewSandbox =
+    mode !== "html" && runtimeConfig.dependencySource === "local" ? "allow-scripts allow-same-origin" : "allow-scripts";
 
   async function runProject(entryOverride) {
     setIsRunning(true);
+    setRunStatus("Running");
     setError("");
     try {
       const entry =
         entryOverride ?? (mode === "html" && activeFile.endsWith(".html") ? activeFile : templates[mode].entry);
-      const html = await bundleProject(mode, files, entry);
+      const html = await bundleProject(mode, files, entry, setRunStatus);
       setPreview(html);
     } catch (err) {
       setError(err.message || String(err));
@@ -830,6 +1088,14 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!runtimeConfig.prewarmEsbuild) return;
+
+    ensureEsbuild().catch((err) => {
+      console.warn("Failed to prewarm esbuild", err);
+    });
+  }, []);
+
+  useEffect(() => {
     function handlePreviewMessage(event) {
       if (mode !== "html" || event.data?.type !== "preview:navigate") return;
 
@@ -875,7 +1141,7 @@ function App() {
           )}
           <button type="button" className="run-button" onClick={() => runProject()} disabled={isRunning}>
             {isRunning ? <Loader2 size={17} className="spin" /> : <Play size={17} />}
-            {isRunning ? "Running" : "Run"}
+            {isRunning ? runStatus : "Run"}
           </button>
         </div>
       </header>
@@ -977,7 +1243,7 @@ function App() {
               <pre>{error}</pre>
             </div>
           ) : (
-            <iframe ref={frameRef} title="preview" sandbox="allow-scripts" srcDoc={preview} />
+            <iframe ref={frameRef} title="preview" sandbox={previewSandbox} srcDoc={preview} />
           )}
         </section>
       </main>
