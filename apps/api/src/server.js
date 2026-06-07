@@ -2,17 +2,24 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import OSS from "ali-oss";
 import cors from "cors";
+import dotenv from "dotenv";
 import express from "express";
 import OpenAI from "openai";
-import "dotenv/config";
+
+const apiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const workspaceRoot = path.resolve(apiRoot, "../..");
+dotenv.config({ path: path.join(workspaceRoot, ".env") });
+dotenv.config({ path: path.join(apiRoot, ".env") });
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
 const publishRoot = path.resolve(process.env.PUBLISH_ROOT || "published-sites");
 const maxFileCount = Number(process.env.MAX_FILE_COUNT || 80);
 const maxTotalBytes = Number(process.env.MAX_TOTAL_BYTES || 2 * 1024 * 1024);
+const deployTargets = new Set(["web", "oss", "cloudflare"]);
 const allowedExtensions = new Set([".html", ".css", ".js", ".json", ".txt", ".svg", ".png", ".jpg", ".jpeg", ".webp"]);
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -201,7 +208,7 @@ function getOssClient() {
 
 async function uploadOssSite(siteId, files) {
   const client = getOssClient();
-  if (!client) return null;
+  if (!client) throw new Error("OSS is not configured");
 
   const prefix = (process.env.OSS_PREFIX || "sites").replace(/^\/+|\/+$/g, "");
 
@@ -217,7 +224,102 @@ async function uploadOssSite(siteId, files) {
   }
 
   const publicBaseUrl = process.env.OSS_PUBLIC_BASE_URL?.replace(/\/+$/g, "");
-  return publicBaseUrl ? `${publicBaseUrl}/${prefix}/${siteId}/index.html` : null;
+  if (!publicBaseUrl) throw new Error("OSS_PUBLIC_BASE_URL is not configured");
+
+  return `${publicBaseUrl}/${prefix}/${siteId}/index.html`;
+}
+
+function getGitHubConfig() {
+  const {
+    GITHUB_OWNER,
+    GITHUB_REPO,
+    GITHUB_BRANCH = "main",
+    GITHUB_TOKEN,
+    GITHUB_PUBLISH_PREFIX = "",
+    CLOUDFLARE_PAGES_URL
+  } = process.env;
+
+  if (!GITHUB_OWNER || !GITHUB_REPO || !GITHUB_TOKEN) {
+    throw new Error("GitHub publishing is not configured");
+  }
+
+  return {
+    owner: GITHUB_OWNER,
+    repo: GITHUB_REPO,
+    branch: GITHUB_BRANCH,
+    token: GITHUB_TOKEN,
+    prefix: GITHUB_PUBLISH_PREFIX.replace(/^\/+|\/+$/g, ""),
+    cloudflarePagesUrl: CLOUDFLARE_PAGES_URL?.replace(/\/+$/g, "")
+  };
+}
+
+async function requestGitHub(pathname, options = {}) {
+  const { owner, repo, token } = getGitHubConfig();
+  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}${pathname}`, {
+    ...options,
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "User-Agent": "gyysite-publisher",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...options.headers
+    }
+  });
+
+  if (response.status === 404) return null;
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.message || `GitHub request failed: ${response.status}`);
+  }
+
+  return body;
+}
+
+async function getGitHubFileSha(filePath, branch) {
+  const encodedPath = filePath
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  const existing = await requestGitHub(`/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`);
+  return existing?.sha || null;
+}
+
+async function publishGitHubSite(siteId, files) {
+  const { branch, prefix, cloudflarePagesUrl } = getGitHubConfig();
+  const commitUrls = [];
+
+  for (const [filePath, content] of files) {
+    const githubPath = prefix ? `${prefix}/${filePath}` : filePath;
+    const sha = await getGitHubFileSha(githubPath, branch);
+    const encodedPath = githubPath
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/");
+    const result = await requestGitHub(`/contents/${encodedPath}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: `Publish ${siteId}: ${filePath}`,
+        content: Buffer.from(content, "utf8").toString("base64"),
+        branch,
+        ...(sha ? { sha } : {})
+      })
+    });
+
+    if (result?.commit?.html_url) commitUrls.push(result.commit.html_url);
+  }
+
+  const sitePath = prefix ? `${prefix}/index.html` : "index.html";
+  const cloudflareUrl = cloudflarePagesUrl ? `${cloudflarePagesUrl}/${sitePath}` : null;
+
+  return {
+    cloudflareUrl,
+    githubCommitUrl: commitUrls.at(-1) || null,
+    githubCommitUrls: commitUrls
+  };
 }
 
 app.get("/api/health", (req, res) => {
@@ -228,15 +330,45 @@ app.post("/api/deploy/html", async (req, res) => {
   try {
     const siteId = makeSiteId(req.body?.siteId);
     const files = validateHtmlFiles(req.body?.files);
+    const target = String(req.body?.target || "web").toLowerCase();
 
-    await writeLocalSite(siteId, files);
-    const ossUrl = await uploadOssSite(siteId, files);
+    if (!deployTargets.has(target)) {
+      throw new Error(`Unsupported deploy target: ${target}`);
+    }
+
+    if (target === "web") {
+      const localUrl = `/sites/${siteId}/index.html`;
+      await writeLocalSite(siteId, files);
+
+      return res.json({
+        ok: true,
+        target,
+        siteId,
+        localUrl,
+        url: localUrl
+      });
+    }
+
+    if (target === "oss") {
+      const ossUrl = await uploadOssSite(siteId, files);
+
+      return res.json({
+        ok: true,
+        target,
+        siteId,
+        ossUrl,
+        url: ossUrl
+      });
+    }
+
+    const githubResult = await publishGitHubSite(siteId, files);
 
     res.json({
       ok: true,
+      target,
       siteId,
-      localUrl: `/sites/${siteId}/index.html`,
-      ossUrl
+      ...githubResult,
+      url: githubResult.cloudflareUrl || githubResult.githubCommitUrl
     });
   } catch (error) {
     res.status(400).json({

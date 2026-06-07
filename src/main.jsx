@@ -9,9 +9,13 @@ import * as VueRuntime from "vue";
 import {
   AlertTriangle,
   Bot,
+  ChevronDown,
+  Cloud,
   Code2,
+  Database,
   FileCode2,
   Folder,
+  HardDrive,
   Loader2,
   Play,
   RotateCcw,
@@ -24,6 +28,12 @@ const runtimeConfig = {
   dependencySource: "local",
   prewarmEsbuild: true
 };
+
+const deployTargets = [
+  { key: "web", label: "Web Server", icon: HardDrive },
+  { key: "oss", label: "OSS", icon: Database },
+  { key: "cloudflare", label: "Cloudflare", icon: Cloud }
+];
 
 window.__sandboxRuntimeDeps = {
   React,
@@ -952,6 +962,7 @@ function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [runStatus, setRunStatus] = useState("Running");
   const [isDeploying, setIsDeploying] = useState(false);
+  const [isDeployMenuOpen, setIsDeployMenuOpen] = useState(false);
   const [deployResult, setDeployResult] = useState(null);
   const [isEditorReady, setIsEditorReady] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
@@ -989,9 +1000,10 @@ function App() {
     setDeployResult(null);
   }
 
-  async function deployHtmlProject() {
+  async function deployHtmlProject(target) {
     if (mode !== "html") return;
 
+    setIsDeployMenuOpen(false);
     setIsDeploying(true);
     setError("");
 
@@ -1002,6 +1014,7 @@ function App() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
+          target,
           siteId: "demo-html-site",
           files
         })
@@ -1134,10 +1147,39 @@ function App() {
             <RotateCcw size={18} />
           </button>
           {mode === "html" && (
-            <button type="button" className="deploy-button" onClick={deployHtmlProject} disabled={isDeploying}>
-              {isDeploying ? <Loader2 size={17} className="spin" /> : <UploadCloud size={17} />}
-              {isDeploying ? "Publishing" : "Publish"}
-            </button>
+            <div className="deploy-menu">
+              <button
+                type="button"
+                className="deploy-button"
+                onClick={() => setIsDeployMenuOpen((isOpen) => !isOpen)}
+                disabled={isDeploying}
+                aria-haspopup="menu"
+                aria-expanded={isDeployMenuOpen}
+              >
+                {isDeploying ? <Loader2 size={17} className="spin" /> : <UploadCloud size={17} />}
+                {isDeploying ? "Publishing" : "Publish"}
+                <ChevronDown size={16} />
+              </button>
+              {isDeployMenuOpen && (
+                <div className="deploy-menu-list" role="menu">
+                  {deployTargets.map((target) => {
+                    const Icon = target.icon;
+
+                    return (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        key={target.key}
+                        onClick={() => deployHtmlProject(target.key)}
+                      >
+                        <Icon size={16} />
+                        <span>{target.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
           <button type="button" className="run-button" onClick={() => runProject()} disabled={isRunning}>
             {isRunning ? <Loader2 size={17} className="spin" /> : <Play size={17} />}
@@ -1229,11 +1271,11 @@ function App() {
             {deployResult && (
               <a
                 className="deploy-link"
-                href={deployResult.ossUrl || deployResult.localUrl}
+                href={deployResult.url || deployResult.githubCommitUrl}
                 target="_blank"
                 rel="noreferrer"
               >
-                Published
+                Published to {deployTargets.find((target) => target.key === deployResult.target)?.label || "Target"}
               </a>
             )}
           </div>

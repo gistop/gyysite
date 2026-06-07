@@ -95,6 +95,10 @@ button {
   gap: 8px;
 }
 
+.deploy-menu {
+  position: relative;
+}
+
 .icon-button,
 .run-button,
 .deploy-button {
@@ -131,6 +135,46 @@ button {
   background: #c89116;
   color: #ffffff;
   font-weight: 800;
+}
+
+.deploy-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  width: 190px;
+  padding: 6px;
+  border: 1px solid #cfd7e4;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18);
+}
+
+.deploy-menu-list button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 9px;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 800;
+  text-align: left;
+}
+
+.deploy-menu-list button:hover {
+  background: #f1f5f9;
+}
+
+.deploy-menu-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .deploy-button:disabled,
@@ -399,6 +443,20 @@ button {
 
   .actions {
     justify-content: stretch;
+  }
+
+  .deploy-menu {
+    flex: 1;
+  }
+
+  .deploy-button {
+    width: 100%;
+  }
+
+  .deploy-menu-list {
+    left: 0;
+    right: auto;
+    width: 100%;
   }
 
   .run-button {

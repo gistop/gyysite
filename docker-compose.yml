@@ -25,6 +25,12 @@ services:
       OSS_BUCKET: ${OSS_BUCKET:-}
       OSS_PREFIX: ${OSS_PREFIX:-sites}
       OSS_PUBLIC_BASE_URL: ${OSS_PUBLIC_BASE_URL:-}
+      GITHUB_OWNER: ${GITHUB_OWNER:-}
+      GITHUB_REPO: ${GITHUB_REPO:-}
+      GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_PUBLISH_PREFIX: ${GITHUB_PUBLISH_PREFIX:-}
+      CLOUDFLARE_PAGES_URL: ${CLOUDFLARE_PAGES_URL:-}
     volumes:
       - published-sites:/data/sites
 
