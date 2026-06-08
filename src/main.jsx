@@ -969,6 +969,10 @@ function App() {
   const [aiSummary, setAiSummary] = useState("");
   const [isAiEditing, setIsAiEditing] = useState(false);
   const [aiSnapshot, setAiSnapshot] = useState(null);
+  const [leftPanelTab, setLeftPanelTab] = useState("project");
+  const [isAssetUploading, setIsAssetUploading] = useState(false);
+  const [assetError, setAssetError] = useState("");
+  const [assets, setAssets] = useState([]);
   const frameRef = useRef(null);
 
   const fileNames = useMemo(() => Object.keys(files), [files]);
@@ -1030,6 +1034,61 @@ function App() {
       setError(err.message || String(err));
     } finally {
       setIsDeploying(false);
+    }
+  }
+
+  async function uploadAssetToR2(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || isAssetUploading) return;
+
+    setIsAssetUploading(true);
+    setAssetError("");
+
+    try {
+      const signResponse = await fetch("/api/assets/r2/presign", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileSize: file.size,
+          contentType: file.type || "application/octet-stream"
+        })
+      });
+      const signed = await signResponse.json();
+
+      if (!signResponse.ok || !signed.ok) {
+        throw new Error(signed.error || "Failed to create upload URL");
+      }
+
+      const uploadResponse = await fetch(signed.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream"
+        },
+        body: file
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`R2 upload failed: ${uploadResponse.status}`);
+      }
+
+      setAssets((currentAssets) => [
+        {
+          id: crypto.randomUUID(),
+          name: file.name,
+          key: signed.key,
+          url: signed.publicUrl,
+          size: file.size
+        },
+        ...currentAssets
+      ]);
+    } catch (err) {
+      setAssetError(err.message || String(err));
+    } finally {
+      setIsAssetUploading(false);
     }
   }
 
@@ -1190,23 +1249,73 @@ function App() {
 
       <main className="workspace">
         <aside className="file-panel">
-          <div className="panel-title">
-            <Folder size={16} />
-            Files
+          <div className="sidebar-tabs" role="tablist" aria-label="Sidebar">
+            <button
+              className={leftPanelTab === "project" ? "active" : ""}
+              onClick={() => setLeftPanelTab("project")}
+              type="button"
+              role="tab"
+              aria-selected={leftPanelTab === "project"}
+            >
+              <Folder size={15} />
+              项目
+            </button>
+            <button
+              className={leftPanelTab === "assets" ? "active" : ""}
+              onClick={() => setLeftPanelTab("assets")}
+              type="button"
+              role="tab"
+              aria-selected={leftPanelTab === "assets"}
+            >
+              <Database size={15} />
+              资源
+            </button>
           </div>
-          <div className="file-list">
-            {fileNames.map((name) => (
-              <button
-                className={name === activeFile ? "file active" : "file"}
-                key={name}
-                onClick={() => setActiveFile(name)}
-                type="button"
-              >
-                <FileCode2 size={15} />
-                <span>{name}</span>
-              </button>
-            ))}
-          </div>
+          {leftPanelTab === "project" ? (
+            <div className="file-list">
+              {fileNames.map((name) => (
+                <button
+                  className={name === activeFile ? "file active" : "file"}
+                  key={name}
+                  onClick={() => setActiveFile(name)}
+                  type="button"
+                >
+                  <FileCode2 size={15} />
+                  <span>{name}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="asset-panel">
+              <label className="asset-upload-button">
+                {isAssetUploading ? <Loader2 size={16} className="spin" /> : <UploadCloud size={16} />}
+                {isAssetUploading ? "上传中" : "上传资源"}
+                <input type="file" onChange={uploadAssetToR2} disabled={isAssetUploading} />
+              </label>
+              {assetError && <div className="asset-error">{assetError}</div>}
+              <div className="asset-list">
+                {assets.length ? (
+                  assets.map((asset) => (
+                    <div className="asset-item" key={asset.id}>
+                      <div>
+                        <strong>{asset.name}</strong>
+                        <span>{asset.key}</span>
+                      </div>
+                      {asset.url ? (
+                        <a href={asset.url} target="_blank" rel="noreferrer">
+                          打开
+                        </a>
+                      ) : (
+                        <span className="asset-url-missing">无公开地址</span>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="asset-empty">暂无资源</div>
+                )}
+              </div>
+            </div>
+          )}
         </aside>
 
         <section className="editor-panel">

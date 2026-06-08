@@ -19,6 +19,7 @@ const port = Number(process.env.PORT || 3001);
 const publishRoot = path.resolve(process.env.PUBLISH_ROOT || "published-sites");
 const maxFileCount = Number(process.env.MAX_FILE_COUNT || 80);
 const maxTotalBytes = Number(process.env.MAX_TOTAL_BYTES || 2 * 1024 * 1024);
+const maxAssetBytes = Number(process.env.R2_MAX_ASSET_BYTES || 20 * 1024 * 1024);
 const deployTargets = new Set(["web", "oss", "cloudflare"]);
 const allowedExtensions = new Set([".html", ".css", ".js", ".json", ".txt", ".svg", ".png", ".jpg", ".jpeg", ".webp"]);
 const contentTypes = new Map([
@@ -51,6 +52,105 @@ function makeSiteId(input) {
     .slice(0, 64);
 
   return slug || `site-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function encodeRfc3986(input) {
+  return encodeURIComponent(input).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function encodeS3Path(input) {
+  return input.split("/").map(encodeRfc3986).join("/");
+}
+
+function hmac(key, value, encoding) {
+  return crypto.createHmac("sha256", key).update(value).digest(encoding);
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function sanitizeR2ObjectKey(fileName) {
+  const rawName = String(fileName || "").replaceAll("\\", "/").split("/").pop() || "asset";
+  const ext = path.posix.extname(rawName).toLowerCase();
+  const baseName = path.posix.basename(rawName, ext);
+  const safeBase =
+    baseName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "asset";
+  const prefix = (process.env.R2_ASSET_PREFIX || "assets").replace(/^\/+|\/+$/g, "");
+  const date = new Date().toISOString().slice(0, 10);
+
+  return `${prefix}/${date}/${crypto.randomUUID().slice(0, 8)}-${safeBase}${ext}`;
+}
+
+function getR2Config() {
+  const {
+    R2_ACCOUNT_ID,
+    R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY,
+    R2_BUCKET,
+    R2_ENDPOINT,
+    R2_PUBLIC_BASE_URL
+  } = process.env;
+
+  const endpoint = (R2_ENDPOINT || (R2_ACCOUNT_ID ? `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : "")).replace(
+    /\/+$/g,
+    ""
+  );
+
+  if (!endpoint || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET) {
+    throw new Error("R2 is not configured");
+  }
+
+  return {
+    endpoint,
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
+    bucket: R2_BUCKET,
+    publicBaseUrl: R2_PUBLIC_BASE_URL?.replace(/\/+$/g, "") || ""
+  };
+}
+
+function createR2PresignedPutUrl({ key, expiresIn = 300 }) {
+  const { endpoint, accessKeyId, secretAccessKey, bucket, publicBaseUrl } = getR2Config();
+  const endpointUrl = new URL(endpoint);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const region = "auto";
+  const service = "s3";
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const canonicalUri = `/${encodeRfc3986(bucket)}/${encodeS3Path(key)}`;
+  const query = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Content-Sha256": "UNSIGNED-PAYLOAD",
+    "X-Amz-Credential": `${accessKeyId}/${credentialScope}`,
+    "X-Amz-Date": amzDate,
+    "X-Amz-Expires": String(Math.min(Math.max(Number(expiresIn) || 300, 1), 604800)),
+    "X-Amz-SignedHeaders": "host"
+  };
+  const canonicalQuery = Object.entries(query)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, value]) => `${encodeRfc3986(name)}=${encodeRfc3986(value)}`)
+    .join("&");
+  const canonicalHeaders = `host:${endpointUrl.host}\n`;
+  const canonicalRequest = ["PUT", canonicalUri, canonicalQuery, canonicalHeaders, "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    sha256(canonicalRequest)
+  ].join("\n");
+  const signingKey = hmac(hmac(hmac(hmac(`AWS4${secretAccessKey}`, dateStamp), region), service), "aws4_request");
+  const signature = hmac(signingKey, stringToSign, "hex");
+  const uploadUrl = `${endpointUrl.origin}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+  const publicUrl = publicBaseUrl ? `${publicBaseUrl}/${encodeS3Path(key)}` : "";
+
+  return { uploadUrl, key, publicUrl, expiresIn: Number(query["X-Amz-Expires"]) };
 }
 
 function normalizeProjectPath(filePath) {
@@ -324,6 +424,30 @@ async function publishGitHubSite(siteId, files) {
 
 app.get("/api/health", (req, res) => {
   res.json({ ok: true });
+});
+
+app.post("/api/assets/r2/presign", (req, res) => {
+  try {
+    const fileName = String(req.body?.fileName || "").trim();
+    const fileSize = Number(req.body?.fileSize || 0);
+
+    if (!fileName) throw new Error("fileName is required");
+    if (!Number.isFinite(fileSize) || fileSize <= 0) throw new Error("fileSize is required");
+    if (fileSize > maxAssetBytes) throw new Error(`Asset is too large. Max bytes: ${maxAssetBytes}`);
+
+    const key = sanitizeR2ObjectKey(fileName);
+    const signed = createR2PresignedPutUrl({ key });
+
+    res.json({
+      ok: true,
+      ...signed
+    });
+  } catch (error) {
+    res.status(400).json({
+      ok: false,
+      error: error.message || String(error)
+    });
+  }
 });
 
 app.post("/api/deploy/html", async (req, res) => {

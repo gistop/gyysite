@@ -254,6 +254,37 @@ button {
   padding: 8px;
 }
 
+.sidebar-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px;
+  border-bottom: 1px solid #e3e8f0;
+  background: #f8fafc;
+}
+
+.sidebar-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sidebar-tabs button.active {
+  background: #172033;
+  color: #ffffff;
+}
+
 .file {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
@@ -280,6 +311,109 @@ button {
   background: #e7f0ff;
   color: #0f4da4;
   font-weight: 800;
+}
+
+.asset-panel {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+}
+
+.asset-upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  border: 1px solid #0f766e;
+  border-radius: 8px;
+  background: #0f766e;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.asset-upload-button input {
+  display: none;
+}
+
+.asset-error {
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #fff7f7;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.asset-list {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.asset-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 9px;
+  background: #ffffff;
+}
+
+.asset-item div {
+  min-width: 0;
+}
+
+.asset-item strong,
+.asset-item span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-item strong {
+  color: #172033;
+  font-size: 13px;
+}
+
+.asset-item span {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.asset-item a,
+.asset-url-missing {
+  color: #0f4da4;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.asset-url-missing {
+  color: #64748b;
+}
+
+.asset-empty {
+  padding: 16px 8px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .editor-panel {
