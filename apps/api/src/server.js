@@ -22,6 +22,15 @@ const maxTotalBytes = Number(process.env.MAX_TOTAL_BYTES || 2 * 1024 * 1024);
 const maxAssetBytes = Number(process.env.R2_MAX_ASSET_BYTES || 20 * 1024 * 1024);
 const deployTargets = new Set(["web", "oss", "cloudflare"]);
 const allowedExtensions = new Set([".html", ".css", ".js", ".json", ".txt", ".svg", ".png", ".jpg", ".jpeg", ".webp"]);
+const projectAllowedExtensions = new Set([
+  ...allowedExtensions,
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".vue",
+  ".md"
+]);
+const projectRepositoryName = process.env.GITHUB_PROJECT_REPO || "testsite";
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
@@ -52,6 +61,17 @@ function makeSiteId(input) {
     .slice(0, 64);
 
   return slug || `site-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function makeRepositoryName(input) {
+  const slug = String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[.-]+|[.-]+$/g, "")
+    .slice(0, 80);
+
+  return slug || "testsite";
 }
 
 function encodeRfc3986(input) {
@@ -153,7 +173,7 @@ function createR2PresignedPutUrl({ key, expiresIn = 300 }) {
   return { uploadUrl, key, publicUrl, expiresIn: Number(query["X-Amz-Expires"]) };
 }
 
-function normalizeProjectPath(filePath) {
+function normalizeProjectPath(filePath, extensions = allowedExtensions) {
   const normalized = path.posix.normalize(String(filePath || "").replaceAll("\\", "/"));
 
   if (
@@ -167,7 +187,7 @@ function normalizeProjectPath(filePath) {
   }
 
   const ext = path.posix.extname(normalized).toLowerCase();
-  if (!allowedExtensions.has(ext)) {
+  if (!extensions.has(ext)) {
     throw new Error(`Unsupported file type: ${filePath}`);
   }
 
@@ -200,6 +220,33 @@ function validateHtmlFiles(files) {
 
   if (!normalizedFiles.has("index.html")) {
     throw new Error("HTML project must include index.html");
+  }
+
+  return normalizedFiles;
+}
+
+function validateProjectFiles(files) {
+  if (!files || typeof files !== "object" || Array.isArray(files)) {
+    throw new Error("files must be an object");
+  }
+
+  const entries = Object.entries(files);
+  if (!entries.length) throw new Error("files cannot be empty");
+  if (entries.length > maxFileCount) throw new Error(`Too many files. Max: ${maxFileCount}`);
+
+  let totalBytes = 0;
+  const normalizedFiles = new Map();
+
+  for (const [filePath, content] of entries) {
+    if (typeof content !== "string") {
+      throw new Error(`File content must be text: ${filePath}`);
+    }
+
+    const normalizedPath = normalizeProjectPath(filePath, projectAllowedExtensions);
+    totalBytes += Buffer.byteLength(content, "utf8");
+    if (totalBytes > maxTotalBytes) throw new Error(`Project is too large. Max bytes: ${maxTotalBytes}`);
+
+    normalizedFiles.set(normalizedPath, content);
   }
 
   return normalizedFiles;
@@ -353,6 +400,49 @@ function getGitHubConfig() {
   };
 }
 
+function getGitHubCredentials() {
+  const { GITHUB_OWNER, GITHUB_BRANCH = "main", GITHUB_TOKEN } = process.env;
+
+  if (!GITHUB_OWNER || !GITHUB_TOKEN) {
+    throw new Error("GITHUB_OWNER and GITHUB_TOKEN are required");
+  }
+
+  return {
+    owner: GITHUB_OWNER,
+    branch: GITHUB_BRANCH,
+    token: GITHUB_TOKEN
+  };
+}
+
+async function requestGitHubApi(pathname, options = {}) {
+  const { token } = getGitHubCredentials();
+  const response = await fetch(`https://api.github.com${pathname}`, {
+    ...options,
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "User-Agent": "gyysite-publisher",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...options.headers
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const details = Array.isArray(body.errors)
+      ? body.errors.map((item) => item.message || item.code || JSON.stringify(item)).join("; ")
+      : "";
+    const error = new Error(
+      [body.message || `GitHub request failed: ${response.status}`, details].filter(Boolean).join(": ")
+    );
+    error.status = response.status;
+    error.github = body;
+    throw error;
+  }
+
+  return body;
+}
+
 async function requestGitHub(pathname, options = {}) {
   const { owner, repo, token } = getGitHubConfig();
   const response = await fetch(`https://api.github.com/repos/${owner}/${repo}${pathname}`, {
@@ -374,6 +464,173 @@ async function requestGitHub(pathname, options = {}) {
   }
 
   return body;
+}
+
+async function ensureGitHubRepository(repo) {
+  const { owner, branch } = getGitHubCredentials();
+  const repoName = makeRepositoryName(repo);
+  let repository = null;
+
+  try {
+    repository = await requestGitHubApi(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`);
+  } catch (error) {
+    if (error.status !== 404) throw error;
+  }
+
+  if (!repository) {
+    const user = await requestGitHubApi("/user");
+    const endpoint =
+      user.login.toLowerCase() === owner.toLowerCase()
+        ? "/user/repos"
+        : `/orgs/${encodeURIComponent(owner)}/repos`;
+
+    repository = await requestGitHubApi(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: repoName,
+        description: "Saved website project versions",
+        private: false,
+        auto_init: true
+      })
+    });
+  }
+
+  return {
+    owner: repository.owner?.login || owner,
+    repo: repository.name,
+    branch: repository.default_branch || branch,
+    url: repository.html_url,
+    created: !repository.pushed_at
+  };
+}
+
+async function requestProjectRepository(repo, pathname, options = {}) {
+  const { owner } = getGitHubCredentials();
+  return requestGitHubApi(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}${pathname}`, options);
+}
+
+async function saveGitHubProjectVersion(files, message) {
+  const repository = await ensureGitHubRepository(projectRepositoryName);
+  const branch = repository.branch;
+  const ref = await requestProjectRepository(repository.repo, `/git/ref/heads/${encodeURIComponent(branch)}`);
+  const baseCommitSha = ref.object?.sha;
+  if (!baseCommitSha) throw new Error(`GitHub branch has no commit: ${branch}`);
+
+  const baseCommit = await requestProjectRepository(repository.repo, `/git/commits/${encodeURIComponent(baseCommitSha)}`);
+  const tree = await requestProjectRepository(repository.repo, "/git/trees", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tree: [...files].map(([filePath, content]) => ({
+        path: filePath,
+        mode: "100644",
+        type: "blob",
+        content
+      }))
+    })
+  });
+  const commit = await requestProjectRepository(repository.repo, "/git/commits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      tree: tree.sha,
+      parents: [baseCommitSha]
+    })
+  });
+
+  await requestProjectRepository(repository.repo, `/git/refs/heads/${encodeURIComponent(branch)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sha: commit.sha,
+      force: false
+    })
+  });
+
+  return {
+    repository,
+    branch,
+    commitSha: commit.sha,
+    commitUrl: commit.html_url
+  };
+}
+
+async function listGitHubProjectVersions() {
+  const { owner, branch } = getGitHubCredentials();
+  const repo = makeRepositoryName(projectRepositoryName);
+  let repository;
+
+  try {
+    repository = await requestGitHubApi(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
+  } catch (error) {
+    if (error.status === 404) return [];
+    throw error;
+  }
+
+  const commits = await requestProjectRepository(
+    repo,
+    `/commits?sha=${encodeURIComponent(repository.default_branch || branch)}&per_page=100`
+  );
+
+  return commits
+    .filter((item) => item.commit?.message?.startsWith("Save project version"))
+    .slice(0, 30)
+    .map((item) => ({
+      sha: item.sha,
+      shortSha: item.sha.slice(0, 7),
+      message: item.commit.message.split("\n")[0],
+      savedAt: item.commit.author?.date || item.commit.committer?.date || null,
+      author: item.commit.author?.name || item.author?.login || "",
+      url: item.html_url
+    }));
+}
+
+async function loadGitHubProjectVersion(sha) {
+  const repo = makeRepositoryName(projectRepositoryName);
+  const commit = await requestProjectRepository(repo, `/git/commits/${encodeURIComponent(sha)}`);
+  const tree = await requestProjectRepository(
+    repo,
+    `/git/trees/${encodeURIComponent(commit.tree.sha)}?recursive=1`
+  );
+
+  if (tree.truncated) {
+    throw new Error("This project version is too large to load");
+  }
+
+  const blobs = tree.tree.filter((item) => {
+    if (item.type !== "blob") return false;
+    const ext = path.posix.extname(item.path).toLowerCase();
+    return projectAllowedExtensions.has(ext);
+  });
+
+  if (!blobs.length) throw new Error("This version does not contain project files");
+  if (blobs.length > maxFileCount) throw new Error(`Too many files. Max: ${maxFileCount}`);
+
+  const files = {};
+  let totalBytes = 0;
+
+  await Promise.all(
+    blobs.map(async (item) => {
+      const blob = await requestProjectRepository(repo, `/git/blobs/${encodeURIComponent(item.sha)}`);
+      if (blob.encoding !== "base64") throw new Error(`Unsupported GitHub blob encoding: ${item.path}`);
+
+      const content = Buffer.from(blob.content.replace(/\s/g, ""), "base64").toString("utf8");
+      totalBytes += Buffer.byteLength(content, "utf8");
+      if (totalBytes > maxTotalBytes) throw new Error(`Project is too large. Max bytes: ${maxTotalBytes}`);
+      files[normalizeProjectPath(item.path, projectAllowedExtensions)] = content;
+    })
+  );
+
+  return {
+    sha: commit.sha,
+    shortSha: commit.sha.slice(0, 7),
+    message: commit.message.split("\n")[0],
+    savedAt: commit.author?.date || commit.committer?.date || null,
+    url: `https://github.com/${getGitHubCredentials().owner}/${repo}/commit/${commit.sha}`,
+    files
+  };
 }
 
 async function getGitHubFileSha(filePath, branch) {
@@ -444,6 +701,56 @@ app.post("/api/assets/r2/presign", (req, res) => {
     });
   } catch (error) {
     res.status(400).json({
+      ok: false,
+      error: error.message || String(error)
+    });
+  }
+});
+
+app.post("/api/projects/save-version", async (req, res) => {
+  try {
+    const files = validateProjectFiles(req.body?.files);
+    const message = String(req.body?.message || "").trim() || `Save project version ${new Date().toISOString()}`;
+    const result = await saveGitHubProjectVersion(files, message);
+
+    res.json({
+      ok: true,
+      repo: result.repository.repo,
+      owner: result.repository.owner,
+      branch: result.branch,
+      repoUrl: result.repository.url,
+      commitSha: result.commitSha,
+      commitUrl: result.commitUrl
+    });
+  } catch (error) {
+    res.status(error.status || 400).json({
+      ok: false,
+      error: error.message || String(error)
+    });
+  }
+});
+
+app.get("/api/projects/versions", async (req, res) => {
+  try {
+    const versions = await listGitHubProjectVersions();
+    res.json({ ok: true, repo: makeRepositoryName(projectRepositoryName), versions });
+  } catch (error) {
+    res.status(error.status || 400).json({
+      ok: false,
+      error: error.message || String(error)
+    });
+  }
+});
+
+app.get("/api/projects/versions/:sha", async (req, res) => {
+  try {
+    const sha = String(req.params.sha || "").trim();
+    if (!/^[a-f0-9]{7,40}$/i.test(sha)) throw new Error("Invalid version");
+
+    const version = await loadGitHubProjectVersion(sha);
+    res.json({ ok: true, repo: makeRepositoryName(projectRepositoryName), ...version });
+  } catch (error) {
+    res.status(error.status || 400).json({
       ok: false,
       error: error.message || String(error)
     });

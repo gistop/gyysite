@@ -19,6 +19,7 @@ import {
   Loader2,
   Play,
   RotateCcw,
+  Save,
   UploadCloud
 } from "lucide-react";
 import "./styles.css";
@@ -973,6 +974,11 @@ function App() {
   const [isAssetUploading, setIsAssetUploading] = useState(false);
   const [assetError, setAssetError] = useState("");
   const [assets, setAssets] = useState([]);
+  const [isSavingVersion, setIsSavingVersion] = useState(false);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [selectedVersion, setSelectedVersion] = useState("current");
+  const [savedVersion, setSavedVersion] = useState(null);
   const frameRef = useRef(null);
 
   const fileNames = useMemo(() => Object.keys(files), [files]);
@@ -1002,6 +1008,8 @@ function App() {
     setPreview("");
     setError("");
     setDeployResult(null);
+    setSavedVersion(null);
+    setSelectedVersion("current");
   }
 
   async function deployHtmlProject(target) {
@@ -1034,6 +1042,97 @@ function App() {
       setError(err.message || String(err));
     } finally {
       setIsDeploying(false);
+    }
+  }
+
+  async function saveProjectVersion() {
+    if (isSavingVersion) return;
+
+    setIsSavingVersion(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/projects/save-version", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          files,
+          message: `Save project version ${new Date().toISOString()}`
+        })
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Save failed");
+      }
+
+      setSavedVersion(result);
+      setSelectedVersion(result.commitSha);
+      await refreshProjectVersions();
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setIsSavingVersion(false);
+    }
+  }
+
+  async function refreshProjectVersions() {
+    setIsLoadingVersions(true);
+
+    try {
+      const response = await fetch("/api/projects/versions");
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Failed to load versions");
+      }
+
+      setVersions(result.versions);
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setIsLoadingVersions(false);
+    }
+  }
+
+  async function switchProjectVersion(event) {
+    const sha = event.target.value;
+    if (!sha || sha === "current" || sha === selectedVersion) return;
+
+    setIsLoadingVersions(true);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/projects/versions/${encodeURIComponent(sha)}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Failed to load version");
+      }
+
+      const nextActiveFile =
+        result.files[activeFile] != null
+          ? activeFile
+          : result.files[templates[mode].entry] != null
+            ? templates[mode].entry
+            : Object.keys(result.files)[0];
+
+      setFiles(result.files);
+      setActiveFile(nextActiveFile);
+      setPreview("");
+      setDeployResult(null);
+      setSelectedVersion(result.sha);
+      setSavedVersion({
+        repo: result.repo,
+        commitSha: result.sha,
+        commitUrl: result.url
+      });
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setIsLoadingVersions(false);
     }
   }
 
@@ -1138,6 +1237,8 @@ function App() {
       setAiSummary(result.summary || "AI 已完成修改");
       setAiInstruction("");
       setDeployResult(null);
+      setSavedVersion(null);
+      setSelectedVersion("current");
     } catch (err) {
       setError(err.message || String(err));
     } finally {
@@ -1153,10 +1254,16 @@ function App() {
     setPreview(aiSnapshot.preview);
     setAiSummary("已撤销上次 AI 修改");
     setAiSnapshot(null);
+    setSavedVersion(null);
+    setSelectedVersion("current");
   }
 
   useEffect(() => {
     runProject();
+  }, []);
+
+  useEffect(() => {
+    refreshProjectVersions();
   }, []);
 
   useEffect(() => {
@@ -1272,18 +1379,44 @@ function App() {
             </button>
           </div>
           {leftPanelTab === "project" ? (
-            <div className="file-list">
-              {fileNames.map((name) => (
-                <button
-                  className={name === activeFile ? "file active" : "file"}
-                  key={name}
-                  onClick={() => setActiveFile(name)}
-                  type="button"
-                >
-                  <FileCode2 size={15} />
-                  <span>{name}</span>
+            <div className="project-panel">
+              <div className="project-toolbar">
+                <button type="button" onClick={saveProjectVersion} disabled={isSavingVersion}>
+                  {isSavingVersion ? <Loader2 size={15} className="spin" /> : <Save size={15} />}
+                  保存版本
                 </button>
-              ))}
+                <select
+                  value={selectedVersion}
+                  onChange={switchProjectVersion}
+                  disabled={isLoadingVersions || !versions.length}
+                  aria-label="切换版本"
+                >
+                  <option value="current">{isLoadingVersions ? "读取版本中..." : "当前编辑版本"}</option>
+                  {versions.map((version) => (
+                    <option value={version.sha} key={version.sha}>
+                      {new Date(version.savedAt).toLocaleString("zh-CN")} · {version.shortSha}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {savedVersion && (
+                <a className="version-link" href={savedVersion.commitUrl} target="_blank" rel="noreferrer">
+                  {savedVersion.repo}@{savedVersion.commitSha.slice(0, 7)}
+                </a>
+              )}
+              <div className="file-list">
+                {fileNames.map((name) => (
+                  <button
+                    className={name === activeFile ? "file active" : "file"}
+                    key={name}
+                    onClick={() => setActiveFile(name)}
+                    type="button"
+                  >
+                    <FileCode2 size={15} />
+                    <span>{name}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="asset-panel">
@@ -1330,7 +1463,11 @@ function App() {
             theme="vs-dark"
             value={files[activeFile]}
             onMount={() => setIsEditorReady(true)}
-            onChange={(value) => setFiles({ ...files, [activeFile]: value ?? "" })}
+            onChange={(value) => {
+              setFiles({ ...files, [activeFile]: value ?? "" });
+              setSavedVersion(null);
+              setSelectedVersion("current");
+            }}
             options={{
               automaticLayout: true,
               fontFamily: "Cascadia Code, Consolas, monospace",

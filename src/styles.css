@@ -248,7 +248,62 @@ button {
   font-weight: 700;
 }
 
+.project-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.project-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid #e3e8f0;
+  background: #ffffff;
+}
+
+.project-toolbar button,
+.project-toolbar select {
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172033;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.project-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.project-toolbar button:disabled,
+.project-toolbar select:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.version-link {
+  min-width: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid #e3e8f0;
+  color: #0f4da4;
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .file-list {
+  flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 8px;
