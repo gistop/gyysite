@@ -6,6 +6,8 @@ import * as esbuild from "esbuild-wasm";
 import wasmURL from "esbuild-wasm/esbuild.wasm?url";
 import { compileScript, compileStyle, compileTemplate, parse } from "@vue/compiler-sfc";
 import * as VueRuntime from "vue";
+import grapesjs from "grapesjs";
+import "grapesjs/dist/css/grapes.min.css";
 import {
   AlertTriangle,
   Bot,
@@ -21,6 +23,7 @@ import {
   Maximize2,
   MessageSquare,
   Loader2,
+  Paintbrush,
   PanelLeftOpen,
   PanelRightOpen,
   Play,
@@ -844,6 +847,90 @@ document.addEventListener("click", function (event) {
   return `${html}${navigationScript}`;
 }
 
+function extractEditableHtml(sourceHtml) {
+  const doc = new DOMParser().parseFromString(sourceHtml || "", "text/html");
+  return doc.body?.innerHTML || sourceHtml || "";
+}
+
+function serializeEditableHtml(sourceHtml, bodyHtml) {
+  const hasDoctype = /^\s*<!doctype/i.test(sourceHtml || "");
+  const doc = new DOMParser().parseFromString(
+    sourceHtml || "<!doctype html><html><head></head><body></body></html>",
+    "text/html"
+  );
+
+  if (!doc.body) {
+    return bodyHtml;
+  }
+
+  doc.body.innerHTML = bodyHtml;
+  const html = doc.documentElement.outerHTML;
+  return `${hasDoctype ? "<!doctype html>\n" : ""}${html}`;
+}
+
+function GrapesPreviewEditor({ html, css, onChange }) {
+  const containerRef = useRef(null);
+  const editorRef = useRef(null);
+  const onChangeRef = useRef(onChange);
+  const changeTimerRef = useRef(null);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    if (!containerRef.current) return undefined;
+
+    const editor = grapesjs.init({
+      container: containerRef.current,
+      height: "100%",
+      width: "100%",
+      storageManager: false,
+      selectorManager: { componentFirst: true },
+      canvas: {
+        styles: []
+      },
+      blockManager: {
+        blocks: [
+          {
+            id: "section",
+            label: "Section",
+            category: "Basic",
+            content: "<section><h2>New section</h2><p>Edit this text.</p></section>"
+          },
+          { id: "text", label: "Text", category: "Basic", content: "<p>Edit this text.</p>" },
+          { id: "image", label: "Image", category: "Basic", content: { type: "image" } },
+          { id: "button", label: "Button", category: "Basic", content: '<a class="button" href="#">Button</a>' }
+        ]
+      }
+    });
+
+    editor.setComponents(html);
+    editor.setStyle(css);
+    editorRef.current = editor;
+
+    const emitChange = () => {
+      window.clearTimeout(changeTimerRef.current);
+      changeTimerRef.current = window.setTimeout(() => {
+        onChangeRef.current?.({
+          html: editor.getHtml(),
+          css: editor.getCss()
+        });
+      }, 250);
+    };
+
+    editor.on("component:update component:add component:remove style:property:update", emitChange);
+
+    return () => {
+      window.clearTimeout(changeTimerRef.current);
+      editor.destroy();
+      editorRef.current = null;
+    };
+  }, []);
+
+  return <div className="grapes-preview-editor" ref={containerRef} />;
+}
+
 function compileVueFile(path, source) {
   const parsed = parse(source, { filename: path });
   const { descriptor } = parsed;
@@ -1067,6 +1154,7 @@ function App() {
   const [isFloatingEditorOpen, setIsFloatingEditorOpen] = useState(false);
   const [isFloatingAiOpen, setIsFloatingAiOpen] = useState(false);
   const [isMonacoVisible, setIsMonacoVisible] = useState(true);
+  const [isGrapesEditorOpen, setIsGrapesEditorOpen] = useState(false);
   const [toolbarPosition, setToolbarPosition] = useState({ x: 18, y: 18 });
   const [editorPosition, setEditorPosition] = useState({ x: 84, y: 548 });
   const frameRef = useRef(null);
@@ -1093,6 +1181,22 @@ function App() {
   function closeCombinedPanel() {
     setIsFloatingEditorOpen(false);
     setIsFloatingAiOpen(false);
+  }
+
+  function updateHtmlFromGrapes(nextPreview) {
+    if (mode !== "html" || !activeFile.endsWith(".html")) return;
+
+    const nextFiles = {
+      ...files,
+      [activeFile]: serializeEditableHtml(files[activeFile], nextPreview.html),
+      "style.css": nextPreview.css
+    };
+
+    setFiles(nextFiles);
+    setPreview(makeHtmlPreview(nextFiles, activeFile));
+    setDeployResult(null);
+    setSavedVersion(null);
+    setSelectedVersion("current");
   }
 
   function startFloatingDrag(event, position, setPosition) {
@@ -1143,6 +1247,7 @@ function App() {
     setDeployResult(null);
     setSavedVersion(null);
     setSelectedVersion("current");
+    setIsGrapesEditorOpen(false);
   }
 
   async function deployHtmlProject(target) {
@@ -1547,6 +1652,23 @@ function App() {
             </button>
           )}
           {mode === "html" && (
+            <button
+              type="button"
+              className={isGrapesEditorOpen ? "active" : ""}
+              title={
+                activeFile.endsWith(".html")
+                  ? isGrapesEditorOpen
+                    ? "Close GrapesJS preview editor"
+                    : "Edit preview with GrapesJS"
+                  : "Select an HTML page to edit with GrapesJS"
+              }
+              onClick={() => setIsGrapesEditorOpen((isOpen) => !isOpen)}
+              disabled={!activeFile.endsWith(".html") && !isGrapesEditorOpen}
+            >
+              <Paintbrush size={17} />
+            </button>
+          )}
+          {mode === "html" && (
             <div className="deploy-menu">
               <button
                 type="button"
@@ -1787,6 +1909,13 @@ function App() {
               <AlertTriangle size={18} />
               <pre>{error}</pre>
             </div>
+          ) : isGrapesEditorOpen && mode === "html" && activeFile.endsWith(".html") ? (
+            <GrapesPreviewEditor
+              key={activeFile}
+              html={extractEditableHtml(files[activeFile])}
+              css={files["style.css"] ?? ""}
+              onChange={updateHtmlFromGrapes}
+            />
           ) : (
             <iframe ref={frameRef} title="preview" sandbox={previewSandbox} srcDoc={preview} />
           )}

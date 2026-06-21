@@ -839,6 +839,32 @@ button {
   background: #ffffff;
 }
 
+.grapes-preview-editor {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.grapes-preview-editor .gjs-one-bg {
+  background-color: #172033;
+}
+
+.grapes-preview-editor .gjs-two-color {
+  color: #d8dee8;
+}
+
+.grapes-preview-editor .gjs-three-bg {
+  background-color: #2f7df6;
+}
+
+.grapes-preview-editor .gjs-four-color,
+.grapes-preview-editor .gjs-four-color-h:hover {
+  color: #2f7df6;
+}
+
 .app-shell-preview .preview-panel {
   position: fixed;
   inset: 0;
