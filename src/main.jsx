@@ -23,12 +23,18 @@ import {
   Maximize2,
   MessageSquare,
   Loader2,
+  Layers,
+  Monitor,
   Paintbrush,
   PanelLeftOpen,
   PanelRightOpen,
   Play,
   RotateCcw,
   Save,
+  Settings,
+  SlidersHorizontal,
+  Smartphone,
+  Tablet,
   UploadCloud,
   X
 } from "lucide-react";
@@ -807,6 +813,22 @@ function getLanguage(path) {
   return "javascript";
 }
 
+async function readJsonResponse(response, fallbackMessage) {
+  const text = await response.text();
+  if (!text.trim()) {
+    return { ok: false, error: fallbackMessage || `Empty response from ${response.url}` };
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      ok: false,
+      error: response.ok ? fallbackMessage || "Invalid JSON response" : `${fallbackMessage || "Request failed"} (${response.status})`
+    };
+  }
+}
+
 async function ensureEsbuild() {
   if (!esbuildReady) {
     esbuildReady = esbuild.initialize({ wasmURL, worker: true });
@@ -868,10 +890,15 @@ function serializeEditableHtml(sourceHtml, bodyHtml) {
   return `${hasDoctype ? "<!doctype html>\n" : ""}${html}`;
 }
 
-function GrapesPreviewEditor({ html, css, onChange }) {
+function GrapesPreviewEditor({ html, css, isOverlayLayout, isSidePanelOpen, activePanel, onChange, onReady }) {
   const containerRef = useRef(null);
+  const blocksRef = useRef(null);
+  const layersRef = useRef(null);
+  const stylesRef = useRef(null);
+  const traitsRef = useRef(null);
   const editorRef = useRef(null);
   const onChangeRef = useRef(onChange);
+  const onReadyRef = useRef(onReady);
   const changeTimerRef = useRef(null);
 
   useEffect(() => {
@@ -879,7 +906,33 @@ function GrapesPreviewEditor({ html, css, onChange }) {
   }, [onChange]);
 
   useEffect(() => {
-    if (!containerRef.current) return undefined;
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
+  useEffect(() => {
+    if (!containerRef.current) {
+      return undefined;
+    }
+    if (isOverlayLayout && (!blocksRef.current || !layersRef.current || !stylesRef.current || !traitsRef.current)) {
+      return undefined;
+    }
+
+    const managerConfig = isOverlayLayout
+      ? {
+          panels: {
+            defaults: []
+          },
+          layerManager: {
+            appendTo: layersRef.current
+          },
+          styleManager: {
+            appendTo: stylesRef.current
+          },
+          traitManager: {
+            appendTo: traitsRef.current
+          }
+        }
+      : {};
 
     const editor = grapesjs.init({
       container: containerRef.current,
@@ -890,7 +943,9 @@ function GrapesPreviewEditor({ html, css, onChange }) {
       canvas: {
         styles: []
       },
+      ...managerConfig,
       blockManager: {
+        ...(isOverlayLayout ? { appendTo: blocksRef.current } : {}),
         blocks: [
           {
             id: "section",
@@ -908,6 +963,7 @@ function GrapesPreviewEditor({ html, css, onChange }) {
     editor.setComponents(html);
     editor.setStyle(css);
     editorRef.current = editor;
+    onReadyRef.current?.(editor);
 
     const emitChange = () => {
       window.clearTimeout(changeTimerRef.current);
@@ -923,12 +979,27 @@ function GrapesPreviewEditor({ html, css, onChange }) {
 
     return () => {
       window.clearTimeout(changeTimerRef.current);
+      onReadyRef.current?.(null);
       editor.destroy();
       editorRef.current = null;
     };
-  }, []);
+  }, [isOverlayLayout]);
 
-  return <div className="grapes-preview-editor" ref={containerRef} />;
+  return (
+    <>
+      <div className="grapes-preview-editor" ref={containerRef} />
+      {isOverlayLayout && (
+        <aside className={`grapes-side-panel ${isSidePanelOpen ? "open" : ""}`} aria-hidden={!isSidePanelOpen}>
+          <div className="grapes-panel-content">
+            <div className={activePanel === "blocks" ? "grapes-manager active" : "grapes-manager"} ref={blocksRef} />
+            <div className={activePanel === "layers" ? "grapes-manager active" : "grapes-manager"} ref={layersRef} />
+            <div className={activePanel === "styles" ? "grapes-manager active" : "grapes-manager"} ref={stylesRef} />
+            <div className={activePanel === "settings" ? "grapes-manager active" : "grapes-manager"} ref={traitsRef} />
+          </div>
+        </aside>
+      )}
+    </>
+  );
 }
 
 function compileVueFile(path, source) {
@@ -1155,6 +1226,10 @@ function App() {
   const [isFloatingAiOpen, setIsFloatingAiOpen] = useState(false);
   const [isMonacoVisible, setIsMonacoVisible] = useState(true);
   const [isGrapesEditorOpen, setIsGrapesEditorOpen] = useState(false);
+  const [grapesEditor, setGrapesEditor] = useState(null);
+  const [grapesDevice, setGrapesDevice] = useState("Desktop");
+  const [activeGrapesPanel, setActiveGrapesPanel] = useState("styles");
+  const [isGrapesSidePanelOpen, setIsGrapesSidePanelOpen] = useState(false);
   const [toolbarPosition, setToolbarPosition] = useState({ x: 18, y: 18 });
   const [editorPosition, setEditorPosition] = useState({ x: 84, y: 548 });
   const frameRef = useRef(null);
@@ -1181,6 +1256,27 @@ function App() {
   function closeCombinedPanel() {
     setIsFloatingEditorOpen(false);
     setIsFloatingAiOpen(false);
+  }
+
+  function toggleGrapesEditor() {
+    setIsGrapesEditorOpen((isOpen) => {
+      const nextIsOpen = !isOpen;
+      if (!nextIsOpen) {
+        setGrapesEditor(null);
+        setIsGrapesSidePanelOpen(false);
+      }
+      return nextIsOpen;
+    });
+  }
+
+  function switchGrapesDevice(device) {
+    setGrapesDevice(device);
+    grapesEditor?.setDevice(device);
+  }
+
+  function toggleGrapesPanel(panel) {
+    setActiveGrapesPanel(panel);
+    setIsGrapesSidePanelOpen((isOpen) => (activeGrapesPanel === panel ? !isOpen : true));
   }
 
   function updateHtmlFromGrapes(nextPreview) {
@@ -1248,6 +1344,8 @@ function App() {
     setSavedVersion(null);
     setSelectedVersion("current");
     setIsGrapesEditorOpen(false);
+    setGrapesEditor(null);
+    setIsGrapesSidePanelOpen(false);
   }
 
   async function deployHtmlProject(target) {
@@ -1269,7 +1367,7 @@ function App() {
           files
         })
       });
-      const result = await response.json();
+      const result = await readJsonResponse(response, "Deploy failed");
 
       if (!response.ok || !result.ok) {
         throw new Error(result.error || "Deploy failed");
@@ -1300,7 +1398,7 @@ function App() {
           message: `Save project version ${new Date().toISOString()}`
         })
       });
-      const result = await response.json();
+      const result = await readJsonResponse(response, "Save failed");
 
       if (!response.ok || !result.ok) {
         throw new Error(result.error || "Save failed");
@@ -1321,7 +1419,7 @@ function App() {
 
     try {
       const response = await fetch("/api/projects/versions");
-      const result = await response.json();
+      const result = await readJsonResponse(response, "Failed to load versions");
 
       if (!response.ok || !result.ok) {
         throw new Error(result.error || "Failed to load versions");
@@ -1329,7 +1427,8 @@ function App() {
 
       setVersions(result.versions);
     } catch (err) {
-      setError(err.message || String(err));
+      console.warn("Failed to load project versions", err);
+      setVersions([]);
     } finally {
       setIsLoadingVersions(false);
     }
@@ -1344,7 +1443,7 @@ function App() {
 
     try {
       const response = await fetch(`/api/projects/versions/${encodeURIComponent(sha)}`);
-      const result = await response.json();
+      const result = await readJsonResponse(response, "Failed to load version");
 
       if (!response.ok || !result.ok) {
         throw new Error(result.error || "Failed to load version");
@@ -1394,7 +1493,7 @@ function App() {
           contentType: file.type || "application/octet-stream"
         })
       });
-      const signed = await signResponse.json();
+      const signed = await readJsonResponse(signResponse, "Failed to create upload URL");
 
       if (!signResponse.ok || !signed.ok) {
         throw new Error(signed.error || "Failed to create upload URL");
@@ -1455,7 +1554,7 @@ function App() {
           files
         })
       });
-      const result = await response.json();
+      const result = await readJsonResponse(response, "AI edit failed");
 
       if (!response.ok || !result.ok) {
         throw new Error(result.error || "AI edit failed");
@@ -1503,6 +1602,12 @@ function App() {
   useEffect(() => {
     refreshProjectVersions();
   }, []);
+
+  useEffect(() => {
+    if (layoutMode === "classic") {
+      setIsGrapesSidePanelOpen(false);
+    }
+  }, [layoutMode]);
 
   useEffect(() => {
     if (!runtimeConfig.prewarmEsbuild) return;
@@ -1662,11 +1767,73 @@ function App() {
                     : "Edit preview with GrapesJS"
                   : "Select an HTML page to edit with GrapesJS"
               }
-              onClick={() => setIsGrapesEditorOpen((isOpen) => !isOpen)}
+              onClick={toggleGrapesEditor}
               disabled={!activeFile.endsWith(".html") && !isGrapesEditorOpen}
             >
               <Paintbrush size={17} />
             </button>
+          )}
+          {isGrapesEditorOpen && layoutMode === "preview" && (
+            <>
+              <span className="toolbar-divider" aria-hidden="true" />
+              <button
+                type="button"
+                className={grapesDevice === "Desktop" ? "active" : ""}
+                title="Desktop preview"
+                onClick={() => switchGrapesDevice("Desktop")}
+              >
+                <Monitor size={17} />
+              </button>
+              <button
+                type="button"
+                className={grapesDevice === "Tablet" ? "active" : ""}
+                title="Tablet preview"
+                onClick={() => switchGrapesDevice("Tablet")}
+              >
+                <Tablet size={17} />
+              </button>
+              <button
+                type="button"
+                className={grapesDevice === "Mobile portrait" ? "active" : ""}
+                title="Mobile preview"
+                onClick={() => switchGrapesDevice("Mobile portrait")}
+              >
+                <Smartphone size={17} />
+              </button>
+              <span className="toolbar-divider" aria-hidden="true" />
+              <button
+                type="button"
+                className={isGrapesSidePanelOpen && activeGrapesPanel === "blocks" ? "active" : ""}
+                title="Blocks"
+                onClick={() => toggleGrapesPanel("blocks")}
+              >
+                <LayoutDashboard size={17} />
+              </button>
+              <button
+                type="button"
+                className={isGrapesSidePanelOpen && activeGrapesPanel === "layers" ? "active" : ""}
+                title="Layer manager"
+                onClick={() => toggleGrapesPanel("layers")}
+              >
+                <Layers size={17} />
+              </button>
+              <button
+                type="button"
+                className={isGrapesSidePanelOpen && activeGrapesPanel === "styles" ? "active" : ""}
+                title="Style manager"
+                onClick={() => toggleGrapesPanel("styles")}
+              >
+                <SlidersHorizontal size={17} />
+              </button>
+              <button
+                type="button"
+                className={isGrapesSidePanelOpen && activeGrapesPanel === "settings" ? "active" : ""}
+                title="Settings"
+                onClick={() => toggleGrapesPanel("settings")}
+              >
+                <Settings size={17} />
+              </button>
+            </>
           )}
           {mode === "html" && (
             <div className="deploy-menu">
@@ -1914,7 +2081,14 @@ function App() {
               key={activeFile}
               html={extractEditableHtml(files[activeFile])}
               css={files["style.css"] ?? ""}
+              isOverlayLayout={layoutMode === "preview"}
+              isSidePanelOpen={isGrapesSidePanelOpen}
+              activePanel={activeGrapesPanel}
               onChange={updateHtmlFromGrapes}
+              onReady={(editor) => {
+                setGrapesEditor(editor);
+                editor?.setDevice(grapesDevice);
+              }}
             />
           ) : (
             <iframe ref={frameRef} title="preview" sandbox={previewSandbox} srcDoc={preview} />

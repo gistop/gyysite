@@ -122,6 +122,17 @@ button {
   color: #ffffff;
 }
 
+.floating-toolbar-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: #cfd7e4;
+}
+
 .floating-toolbar-actions .deploy-button {
   min-width: 52px;
   gap: 4px;
@@ -299,6 +310,7 @@ button {
 .file-panel,
 .editor-panel,
 .preview-panel {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -450,6 +462,10 @@ button {
 .editor-frame {
   min-width: 0;
   min-height: 0;
+  height: 100%;
+}
+
+.app-shell-preview .editor-frame {
   height: 420px;
 }
 
@@ -848,6 +864,21 @@ button {
   background: #ffffff;
 }
 
+.grapes-preview-editor .gjs-editor {
+  height: 100%;
+}
+
+.app-shell-preview .grapes-preview-editor .gjs-cv-canvas {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.app-shell-preview .grapes-preview-editor .gjs-pn-panels {
+  display: none;
+}
+
 .grapes-preview-editor .gjs-one-bg {
   background-color: #172033;
 }
@@ -863,6 +894,43 @@ button {
 .grapes-preview-editor .gjs-four-color,
 .grapes-preview-editor .gjs-four-color-h:hover {
   color: #2f7df6;
+}
+
+.grapes-side-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  width: min(360px, calc(100% - 48px));
+  max-width: 92vw;
+  overflow: hidden;
+  border-left: 1px solid rgba(15, 23, 42, 0.24);
+  background: #172033;
+  box-shadow: -20px 0 46px rgba(15, 23, 42, 0.24);
+  transform: translateX(104%);
+  transition: transform 0.22s ease;
+}
+
+.grapes-side-panel.open {
+  transform: translateX(0);
+}
+
+.grapes-panel-content {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.grapes-manager {
+  display: none;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.grapes-manager.active {
+  display: block;
 }
 
 .app-shell-preview .preview-panel {
