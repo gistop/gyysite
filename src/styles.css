@@ -47,6 +47,102 @@ button {
   background: #ffffff;
 }
 
+.topbar .actions {
+  display: none;
+}
+
+.topbar-spacer {
+  min-width: 0;
+}
+
+.app-shell-preview {
+  display: block;
+}
+
+.app-shell-preview .topbar {
+  display: none;
+}
+
+.draggable-surface {
+  position: fixed;
+  z-index: 80;
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 0 9px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+  color: #475569;
+  cursor: grab;
+  font-size: 12px;
+  font-weight: 900;
+  user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.floating-toolbar {
+  min-width: 0;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.22);
+  backdrop-filter: blur(12px);
+}
+
+.floating-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+}
+
+.floating-toolbar-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  border: 1px solid #cfd7e4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.floating-toolbar-actions button.active {
+  border-color: #172033;
+  background: #172033;
+  color: #ffffff;
+}
+
+.floating-toolbar-actions .deploy-button {
+  min-width: 52px;
+  gap: 4px;
+  padding: 0 8px;
+  border-color: #b98b16;
+  background: #c89116;
+  color: #ffffff;
+}
+
+.floating-toolbar-actions .run-button {
+  min-width: 82px;
+  height: 34px;
+  gap: 7px;
+  padding: 0 10px;
+}
+
+.floating-toolbar .deploy-menu-list {
+  left: 0;
+  right: auto;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -192,6 +288,14 @@ button {
   overflow: hidden;
 }
 
+.app-shell-preview .workspace {
+  position: fixed;
+  inset: 0;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
 .file-panel,
 .editor-panel,
 .preview-panel {
@@ -210,9 +314,112 @@ button {
   grid-template-rows: 42px minmax(0, 1fr);
 }
 
+.drawer-close,
+.panel-close {
+  display: none;
+}
+
+.app-shell-preview .drawer-close,
+.app-shell-preview .panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #cfd7e4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.app-shell-preview .file-panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 60;
+  width: min(360px, calc(100vw - 48px));
+  border-radius: 0;
+  box-shadow: 0 20px 52px rgba(15, 23, 42, 0.24);
+  transition:
+    left 0.22s ease,
+    right 0.22s ease,
+    transform 0.22s ease;
+}
+
+.app-shell-preview.drawer-left .file-panel {
+  left: 0;
+  right: auto;
+  transform: translateX(-104%);
+}
+
+.app-shell-preview.drawer-right .file-panel {
+  left: auto;
+  right: 0;
+  transform: translateX(104%);
+}
+
+.app-shell-preview.drawer-open .file-panel {
+  transform: translateX(0);
+}
+
+.app-shell-preview .file-panel .drawer-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+.app-shell-preview .file-panel .sidebar-tabs {
+  padding-right: 44px;
+}
+
 .editor-panel {
   grid-template-rows: 42px minmax(0, 1fr) auto;
   height: 100%;
+}
+
+.app-shell-preview .editor-panel {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  width: min(760px, calc(100vw - 32px));
+  height: auto;
+  grid-template-rows: 42px 420px auto;
+  border-color: rgba(15, 23, 42, 0.36);
+  box-shadow: 0 24px 58px rgba(15, 23, 42, 0.32);
+  transform: translateY(-12px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.app-shell-preview.editor-open .editor-panel {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.app-shell-preview .editor-panel .panel-title {
+  cursor: grab;
+  user-select: none;
+}
+
+.app-shell-preview .editor-panel .panel-title:active {
+  cursor: grabbing;
+}
+
+.app-shell-preview .editor-panel.monaco-collapsed {
+  height: auto;
+  grid-template-rows: auto;
+}
+
+.app-shell-preview .editor-panel.monaco-collapsed > .panel-title,
+.app-shell-preview .editor-panel.monaco-collapsed > .editor-frame {
+  display: none;
+  pointer-events: none;
 }
 
 .panel-title {
@@ -233,6 +440,17 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.panel-close {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.editor-frame {
+  min-width: 0;
+  min-height: 0;
+  height: 420px;
 }
 
 .deploy-link {
@@ -486,6 +704,30 @@ button {
   background: #f8fafc;
 }
 
+.app-shell-preview .editor-panel > .ai-panel {
+  position: static;
+  z-index: auto;
+  display: block;
+  width: auto;
+  border: 0;
+  border-top: 1px solid #313131;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+  transition: none;
+}
+
+.app-shell-preview .ai-title {
+  cursor: grab;
+  user-select: none;
+}
+
+.app-shell-preview .ai-title:active {
+  cursor: grabbing;
+}
+
 .ai-title {
   display: flex;
   align-items: center;
@@ -504,6 +746,19 @@ button {
   align-items: center;
   gap: 7px;
   min-width: 0;
+}
+
+.ai-title-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.ai-title-actions .panel-close {
+  display: inline-flex;
+  margin-left: 0;
 }
 
 .ai-summary {
@@ -582,6 +837,25 @@ button {
   height: 100%;
   border: 0;
   background: #ffffff;
+}
+
+.app-shell-preview .preview-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  border: 0;
+  border-radius: 0;
+}
+
+.app-shell-preview .preview-panel .panel-title {
+  display: none;
+}
+
+.app-shell-preview .preview-panel iframe,
+.app-shell-preview .preview-panel .error-box {
+  width: 100%;
+  height: 100%;
 }
 
 .error-box {

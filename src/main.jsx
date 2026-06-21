@@ -15,17 +15,24 @@ import {
   Database,
   FileCode2,
   Folder,
+  GripHorizontal,
   HardDrive,
+  LayoutDashboard,
+  Maximize2,
+  MessageSquare,
   Loader2,
+  PanelLeftOpen,
+  PanelRightOpen,
   Play,
   RotateCcw,
   Save,
-  UploadCloud
+  UploadCloud,
+  X
 } from "lucide-react";
 import "./styles.css";
 
 const runtimeConfig = {
-  // "remote" = 模式A：沿用 esm.sh；"local" = 模式B：固定依赖本地化。
+  // "remote" loads dependencies from esm.sh; "local" uses bundled runtime shims.
   dependencySource: "local",
   prewarmEsbuild: true
 };
@@ -42,6 +49,37 @@ window.__sandboxRuntimeDeps = {
   Vue: VueRuntime
 };
 
+const demoCopy = {
+  brand: "\u661f\u6cb3\u79d1\u6280",
+  home: "\u9996\u9875",
+  products: "\u4ea7\u54c1\u4ecb\u7ecd",
+  contact: "\u8054\u7cfb\u6211\u4eec",
+  headline: "\u8ba9\u4e1a\u52a1\u7cfb\u7edf\u66f4\u6e05\u6670\u3001\u66f4\u9ad8\u6548\u5730\u8fd0\u8f6c",
+  lead: "\u661f\u6cb3\u79d1\u6280\u4e3a\u4f01\u4e1a\u63d0\u4f9b\u6570\u636e\u770b\u677f\u3001\u81ea\u52a8\u5316\u6d41\u7a0b\u548c\u5ba2\u6237\u534f\u4f5c\u5de5\u5177\u3002",
+  viewProducts: "\u67e5\u770b\u4ea7\u54c1",
+  today: "\u4eca\u65e5\u6982\u89c8",
+  delivery: "\u9879\u76ee\u4ea4\u4ed8\u7387",
+  response: "\u5ba2\u6237\u54cd\u5e94\u65f6\u95f4",
+  productHeadline: "\u4e09\u5957\u5de5\u5177\uff0c\u8986\u76d6\u4f01\u4e1a\u6838\u5fc3\u534f\u4f5c\u573a\u666f",
+  dashboard: "\u6570\u636e\u9a7e\u9a76\u8231",
+  dashboardText: "\u7edf\u4e00\u5c55\u793a\u9500\u552e\u3001\u8fd0\u8425\u548c\u9879\u76ee\u6307\u6807\uff0c\u8ba9\u7ba1\u7406\u5c42\u5feb\u901f\u5224\u65ad\u4e1a\u52a1\u72b6\u6001\u3002",
+  automation: "\u6d41\u7a0b\u81ea\u52a8\u5316",
+  automationText: "\u628a\u5ba1\u6279\u3001\u63d0\u9192\u3001\u5206\u6d3e\u548c\u5f52\u6863\u4e32\u8054\u8d77\u6765\uff0c\u51cf\u5c11\u91cd\u590d\u5f55\u5165\u548c\u624b\u5de5\u8ddf\u8fdb\u3002",
+  portal: "\u5ba2\u6237\u534f\u4f5c\u95e8\u6237",
+  portalText: "\u4e3a\u5ba2\u6237\u63d0\u4f9b\u9879\u76ee\u8fdb\u5ea6\u3001\u6587\u4ef6\u4ea4\u4ed8\u548c\u5728\u7ebf\u53cd\u9988\u5165\u53e3\uff0c\u6c9f\u901a\u66f4\u900f\u660e\u3002",
+  contactHeadline: "\u544a\u8bc9\u6211\u4eec\u4f60\u7684\u4e1a\u52a1\u76ee\u6807",
+  contactLead: "\u6211\u4eec\u4f1a\u5728\u4e00\u4e2a\u5de5\u4f5c\u65e5\u5185\u56de\u590d\uff0c\u5e76\u7ed9\u51fa\u9002\u5408\u5f53\u524d\u9636\u6bb5\u7684\u4ea7\u54c1\u65b9\u6848\u3002",
+  phone: "\u7535\u8bdd\uff1a400-800-2026",
+  email: "\u90ae\u7bb1\uff1ahello@example.com",
+  address: "\u5730\u5740\uff1a\u4e0a\u6d77\u5e02\u6d66\u4e1c\u65b0\u533a\u521b\u65b0\u5927\u9053 88 \u53f7",
+  name: "\u59d3\u540d",
+  namePlaceholder: "\u8bf7\u8f93\u5165\u59d3\u540d",
+  contactMethod: "\u8054\u7cfb\u65b9\u5f0f",
+  needs: "\u9700\u6c42",
+  needsPlaceholder: "\u7b80\u5355\u63cf\u8ff0\u4f60\u7684\u9700\u6c42",
+  submit: "\u63d0\u4ea4\u54a8\u8be2"
+};
+
 const templates = {
   html: {
     label: "HTML",
@@ -51,34 +89,34 @@ const templates = {
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>首页 - 星河科技</title>
+    <title>${demoCopy.home} - ${demoCopy.brand}</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <header class="site-header">
-      <a class="logo" href="./index.html">星河科技</a>
+      <a class="logo" href="./index.html">${demoCopy.brand}</a>
       <nav>
-        <a class="active" href="./index.html">首页</a>
-        <a href="./products.html">产品介绍</a>
-        <a href="./contact.html">联系我们</a>
+        <a class="active" href="./index.html">${demoCopy.home}</a>
+        <a href="./products.html">${demoCopy.products}</a>
+        <a href="./contact.html">${demoCopy.contact}</a>
       </nav>
     </header>
 
     <main class="hero">
       <section>
         <p class="eyebrow">Digital operations platform</p>
-        <h1>让业务系统更清晰、更高效地运转</h1>
-        <p class="lead">星河科技为企业提供数据看板、自动化流程和客户协作工具，帮助团队把复杂工作整理成可执行的日常。</p>
-        <a class="button" href="./products.html">查看产品</a>
+        <h1>${demoCopy.headline}</h1>
+        <p class="lead">${demoCopy.lead}</p>
+        <a class="button" href="./products.html">${demoCopy.viewProducts}</a>
       </section>
       <section class="hero-panel">
-        <h2>今日概览</h2>
+        <h2>${demoCopy.today}</h2>
         <div class="metric">
-          <span>项目交付率</span>
+          <span>${demoCopy.delivery}</span>
           <strong>96%</strong>
         </div>
         <div class="metric">
-          <span>客户响应时间</span>
+          <span>${demoCopy.response}</span>
           <strong>12m</strong>
         </div>
       </section>
@@ -90,34 +128,34 @@ const templates = {
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>产品介绍 - 星河科技</title>
+    <title>${demoCopy.products} - ${demoCopy.brand}</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <header class="site-header">
-      <a class="logo" href="./index.html">星河科技</a>
+      <a class="logo" href="./index.html">${demoCopy.brand}</a>
       <nav>
-        <a href="./index.html">首页</a>
-        <a class="active" href="./products.html">产品介绍</a>
-        <a href="./contact.html">联系我们</a>
+        <a href="./index.html">${demoCopy.home}</a>
+        <a class="active" href="./products.html">${demoCopy.products}</a>
+        <a href="./contact.html">${demoCopy.contact}</a>
       </nav>
     </header>
 
     <main class="page">
       <p class="eyebrow">Products</p>
-      <h1>三套工具，覆盖企业核心协作场景</h1>
+      <h1>${demoCopy.productHeadline}</h1>
       <section class="product-grid">
         <article>
-          <h2>数据驾驶舱</h2>
-          <p>统一展示销售、运营和项目指标，让管理层快速判断业务状态。</p>
+          <h2>${demoCopy.dashboard}</h2>
+          <p>${demoCopy.dashboardText}</p>
         </article>
         <article>
-          <h2>流程自动化</h2>
-          <p>把审批、提醒、分派和归档串联起来，减少重复录入和手工跟进。</p>
+          <h2>${demoCopy.automation}</h2>
+          <p>${demoCopy.automationText}</p>
         </article>
         <article>
-          <h2>客户协作门户</h2>
-          <p>为客户提供项目进度、文件交付和在线反馈入口，沟通更透明。</p>
+          <h2>${demoCopy.portal}</h2>
+          <p>${demoCopy.portalText}</p>
         </article>
       </section>
     </main>
@@ -128,50 +166,49 @@ const templates = {
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>联系我们 - 星河科技</title>
+    <title>${demoCopy.contact} - ${demoCopy.brand}</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <header class="site-header">
-      <a class="logo" href="./index.html">星河科技</a>
+      <a class="logo" href="./index.html">${demoCopy.brand}</a>
       <nav>
-        <a href="./index.html">首页</a>
-        <a href="./products.html">产品介绍</a>
-        <a class="active" href="./contact.html">联系我们</a>
+        <a href="./index.html">${demoCopy.home}</a>
+        <a href="./products.html">${demoCopy.products}</a>
+        <a class="active" href="./contact.html">${demoCopy.contact}</a>
       </nav>
     </header>
 
     <main class="page contact-layout">
       <section>
         <p class="eyebrow">Contact</p>
-        <h1>告诉我们你的业务目标</h1>
-        <p class="lead">我们会在一个工作日内回复，并给出适合当前阶段的产品方案。</p>
+        <h1>${demoCopy.contactHeadline}</h1>
+        <p class="lead">${demoCopy.contactLead}</p>
         <ul class="contact-list">
-          <li>电话：400-800-2026</li>
-          <li>邮箱：hello@example.com</li>
-          <li>地址：上海市浦东新区创新大道 88 号</li>
+          <li>${demoCopy.phone}</li>
+          <li>${demoCopy.email}</li>
+          <li>${demoCopy.address}</li>
         </ul>
       </section>
       <form class="contact-form">
         <label>
-          姓名
-          <input type="text" placeholder="请输入姓名" />
+          ${demoCopy.name}
+          <input type="text" placeholder="${demoCopy.namePlaceholder}" />
         </label>
         <label>
-          联系方式
+          ${demoCopy.contactMethod}
           <input type="email" placeholder="name@example.com" />
         </label>
         <label>
-          需求
-          <textarea rows="4" placeholder="简单描述你的需求"></textarea>
+          ${demoCopy.needs}
+          <textarea rows="4" placeholder="${demoCopy.needsPlaceholder}"></textarea>
         </label>
-        <button type="submit">提交咨询</button>
+        <button type="submit">${demoCopy.submit}</button>
       </form>
     </main>
     <script src="./script.js"></script>
   </body>
-</html>`,
-      "style.css": `body {
+</html>`,      "style.css": `body {
   margin: 0;
   min-height: 100vh;
   font-family: Inter, system-ui, sans-serif;
@@ -377,7 +414,7 @@ h1 {
 if (form) {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    alert("咨询已提交，我们会尽快联系你。");
+    alert("\u611f\u8c22\u54a8\u8be2\uff0c\u6211\u4eec\u4f1a\u5c3d\u5feb\u8054\u7cfb\u4f60\u3002");
   });
 }`
     }
@@ -954,6 +991,51 @@ async function bundleProject(mode, files, entry, onStatus) {
 </html>`;
 }
 
+function DraggableSurface({ position, setPosition, className = "", title, children }) {
+  const dragRef = useRef(null);
+
+  function startDrag(event) {
+    if (event.button !== 0) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLeft = position.x;
+    const startTop = position.y;
+
+    function moveDrag(moveEvent) {
+      const nextX = Math.min(Math.max(8, startLeft + moveEvent.clientX - startX), window.innerWidth - 72);
+      const nextY = Math.min(Math.max(8, startTop + moveEvent.clientY - startY), window.innerHeight - 56);
+      setPosition({ x: nextX, y: nextY });
+    }
+
+    function stopDrag() {
+      window.removeEventListener("pointermove", moveDrag);
+      window.removeEventListener("pointerup", stopDrag);
+      dragRef.current?.releasePointerCapture?.(event.pointerId);
+    }
+
+    dragRef.current?.setPointerCapture?.(event.pointerId);
+    window.addEventListener("pointermove", moveDrag);
+    window.addEventListener("pointerup", stopDrag);
+  }
+
+  return (
+    <div className={`draggable-surface ${className}`} style={{ left: position.x, top: position.y }}>
+      <div
+        className="drag-handle"
+        ref={dragRef}
+        onPointerDown={startDrag}
+        role="button"
+        tabIndex={0}
+        aria-label={`Move ${title}`}
+      >
+        <GripHorizontal size={18} />
+        <span>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function App() {
   const [mode, setMode] = useState("html");
   const [files, setFiles] = useState(templates.html.files);
@@ -979,11 +1061,62 @@ function App() {
   const [versions, setVersions] = useState([]);
   const [selectedVersion, setSelectedVersion] = useState("current");
   const [savedVersion, setSavedVersion] = useState(null);
+  const [layoutMode, setLayoutMode] = useState("classic");
+  const [drawerSide, setDrawerSide] = useState("left");
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isFloatingEditorOpen, setIsFloatingEditorOpen] = useState(false);
+  const [isFloatingAiOpen, setIsFloatingAiOpen] = useState(false);
+  const [isMonacoVisible, setIsMonacoVisible] = useState(true);
+  const [toolbarPosition, setToolbarPosition] = useState({ x: 18, y: 18 });
+  const [editorPosition, setEditorPosition] = useState({ x: 84, y: 548 });
   const frameRef = useRef(null);
 
   const fileNames = useMemo(() => Object.keys(files), [files]);
   const previewSandbox =
-    mode !== "html" && runtimeConfig.dependencySource === "local" ? "allow-scripts allow-same-origin" : "allow-scripts";
+    mode === "html" || runtimeConfig.dependencySource !== "local" ? "allow-scripts" : "allow-scripts allow-same-origin";
+  const isCombinedPanelOpen = isFloatingEditorOpen || isFloatingAiOpen;
+  const monacoPanelOffset = 462;
+  const combinedPanelStyle =
+    layoutMode === "preview"
+      ? {
+          left: editorPosition.x,
+          top: Math.max(8, editorPosition.y - (isMonacoVisible ? monacoPanelOffset : 0))
+        }
+      : undefined;
+
+  function toggleCombinedPanel() {
+    const shouldOpen = !isCombinedPanelOpen;
+    setIsFloatingEditorOpen(shouldOpen);
+    setIsFloatingAiOpen(shouldOpen);
+  }
+
+  function closeCombinedPanel() {
+    setIsFloatingEditorOpen(false);
+    setIsFloatingAiOpen(false);
+  }
+
+  function startFloatingDrag(event, position, setPosition) {
+    if (layoutMode !== "preview" || event.button !== 0) return;
+    if (event.target.closest("button")) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLeft = position.x;
+    const startTop = position.y;
+
+    function moveDrag(moveEvent) {
+      const nextX = Math.min(Math.max(8, startLeft + moveEvent.clientX - startX), window.innerWidth - 96);
+      const nextY = Math.min(Math.max(8, startTop + moveEvent.clientY - startY), window.innerHeight - 72);
+      setPosition({ x: nextX, y: nextY });
+    }
+
+    function stopDrag() {
+      window.removeEventListener("pointermove", moveDrag);
+      window.removeEventListener("pointerup", stopDrag);
+    }
+
+    window.addEventListener("pointermove", moveDrag);
+    window.addEventListener("pointerup", stopDrag);
+  }
 
   async function runProject(entryOverride) {
     setIsRunning(true);
@@ -1196,7 +1329,7 @@ function App() {
 
     const instruction = aiInstruction.trim();
     if (!instruction) {
-      setError("请先输入要让 AI 修改的需求");
+      setError("Describe the change you want AI to make first.");
       return;
     }
 
@@ -1220,7 +1353,7 @@ function App() {
       const result = await response.json();
 
       if (!response.ok || !result.ok) {
-        throw new Error(result.error || "AI 修改失败");
+        throw new Error(result.error || "AI edit failed");
       }
 
       const nextFiles = {
@@ -1234,7 +1367,7 @@ function App() {
       setFiles(nextFiles);
       setActiveFile(nextActiveFile);
       setPreview(html);
-      setAiSummary(result.summary || "AI 已完成修改");
+      setAiSummary(result.summary || "AI edit completed.");
       setAiInstruction("");
       setDeployResult(null);
       setSavedVersion(null);
@@ -1252,7 +1385,7 @@ function App() {
     setFiles(aiSnapshot.files);
     setActiveFile(aiSnapshot.activeFile);
     setPreview(aiSnapshot.preview);
-    setAiSummary("已撤销上次 AI 修改");
+    setAiSummary("Last AI edit was undone.");
     setAiSnapshot(null);
     setSavedVersion(null);
     setSelectedVersion("current");
@@ -1290,7 +1423,17 @@ function App() {
   }, [mode, files]);
 
   return (
-    <div className="app-shell">
+    <div
+      className={[
+        "app-shell",
+        layoutMode === "preview" ? "app-shell-preview" : "",
+        isDrawerOpen ? "drawer-open" : "",
+        `drawer-${drawerSide}`,
+        isCombinedPanelOpen ? "editor-open" : ""
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <header className="topbar">
         <div className="brand">
           <Code2 size={22} />
@@ -1354,8 +1497,97 @@ function App() {
         </div>
       </header>
 
+      <DraggableSurface className="floating-toolbar" position={toolbarPosition} setPosition={setToolbarPosition} title="Tools">
+        <div className="floating-toolbar-actions">
+          <button
+            type="button"
+            className={layoutMode === "classic" ? "active" : ""}
+            title="Classic layout"
+            onClick={() => setLayoutMode("classic")}
+          >
+            <LayoutDashboard size={17} />
+          </button>
+          <button
+            type="button"
+            className={layoutMode === "preview" ? "active" : ""}
+            title="Full preview layout"
+            onClick={() => setLayoutMode("preview")}
+          >
+            <Maximize2 size={17} />
+          </button>
+          <button type="button" title="Reset template" onClick={() => switchMode(mode)}>
+            <RotateCcw size={17} />
+          </button>
+          <button type="button" title="Project and assets" onClick={() => setIsDrawerOpen((isOpen) => !isOpen)}>
+            {drawerSide === "left" ? <PanelLeftOpen size={17} /> : <PanelRightOpen size={17} />}
+          </button>
+          <button
+            type="button"
+            title="Switch drawer side"
+            onClick={() => setDrawerSide((side) => (side === "left" ? "right" : "left"))}
+          >
+            {drawerSide === "left" ? <PanelRightOpen size={17} /> : <PanelLeftOpen size={17} />}
+          </button>
+          <button
+            type="button"
+            className={isCombinedPanelOpen ? "active" : ""}
+            title="Monaco Editor"
+            onClick={toggleCombinedPanel}
+          >
+            <Code2 size={17} />
+          </button>
+          {mode === "html" && (
+            <button
+              type="button"
+              className={isCombinedPanelOpen ? "active" : ""}
+              title="AI edit"
+              onClick={toggleCombinedPanel}
+            >
+              <MessageSquare size={17} />
+            </button>
+          )}
+          {mode === "html" && (
+            <div className="deploy-menu">
+              <button
+                type="button"
+                className="deploy-button"
+                onClick={() => setIsDeployMenuOpen((isOpen) => !isOpen)}
+                disabled={isDeploying}
+                aria-haspopup="menu"
+                aria-expanded={isDeployMenuOpen}
+                title="Publish"
+              >
+                {isDeploying ? <Loader2 size={17} className="spin" /> : <UploadCloud size={17} />}
+                <ChevronDown size={15} />
+              </button>
+              {isDeployMenuOpen && (
+                <div className="deploy-menu-list" role="menu">
+                  {deployTargets.map((target) => {
+                    const Icon = target.icon;
+
+                    return (
+                      <button type="button" role="menuitem" key={target.key} onClick={() => deployHtmlProject(target.key)}>
+                        <Icon size={16} />
+                        <span>{target.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          <button type="button" className="run-button" onClick={() => runProject()} disabled={isRunning} title={runStatus}>
+            {isRunning ? <Loader2 size={17} className="spin" /> : <Play size={17} />}
+            <span>{isRunning ? runStatus : "Run"}</span>
+          </button>
+        </div>
+      </DraggableSurface>
+
       <main className="workspace">
         <aside className="file-panel">
+          <button className="drawer-close" type="button" onClick={() => setIsDrawerOpen(false)} title="Close panel">
+            <X size={16} />
+          </button>
           <div className="sidebar-tabs" role="tablist" aria-label="Sidebar">
             <button
               className={leftPanelTab === "project" ? "active" : ""}
@@ -1365,7 +1597,7 @@ function App() {
               aria-selected={leftPanelTab === "project"}
             >
               <Folder size={15} />
-              项目
+              Project
             </button>
             <button
               className={leftPanelTab === "assets" ? "active" : ""}
@@ -1375,7 +1607,7 @@ function App() {
               aria-selected={leftPanelTab === "assets"}
             >
               <Database size={15} />
-              资源
+              Assets
             </button>
           </div>
           {leftPanelTab === "project" ? (
@@ -1383,18 +1615,18 @@ function App() {
               <div className="project-toolbar">
                 <button type="button" onClick={saveProjectVersion} disabled={isSavingVersion}>
                   {isSavingVersion ? <Loader2 size={15} className="spin" /> : <Save size={15} />}
-                  保存版本
+                  Save version
                 </button>
                 <select
                   value={selectedVersion}
                   onChange={switchProjectVersion}
                   disabled={isLoadingVersions || !versions.length}
-                  aria-label="切换版本"
+                  aria-label="Switch version"
                 >
-                  <option value="current">{isLoadingVersions ? "读取版本中..." : "当前编辑版本"}</option>
+                  <option value="current">{isLoadingVersions ? "Loading versions..." : "Current editing version"}</option>
                   {versions.map((version) => (
                     <option value={version.sha} key={version.sha}>
-                      {new Date(version.savedAt).toLocaleString("zh-CN")} · {version.shortSha}
+                      {new Date(version.savedAt).toLocaleString("zh-CN")} - {version.shortSha}
                     </option>
                   ))}
                 </select>
@@ -1422,7 +1654,7 @@ function App() {
             <div className="asset-panel">
               <label className="asset-upload-button">
                 {isAssetUploading ? <Loader2 size={16} className="spin" /> : <UploadCloud size={16} />}
-                {isAssetUploading ? "上传中" : "上传资源"}
+                {isAssetUploading ? "Uploading..." : "Upload asset"}
                 <input type="file" onChange={uploadAssetToR2} disabled={isAssetUploading} />
               </label>
               {assetError && <div className="asset-error">{assetError}</div>}
@@ -1436,74 +1668,99 @@ function App() {
                       </div>
                       {asset.url ? (
                         <a href={asset.url} target="_blank" rel="noreferrer">
-                          打开
+                          Open
                         </a>
                       ) : (
-                        <span className="asset-url-missing">无公开地址</span>
+                        <span className="asset-url-missing">No public URL</span>
                       )}
                     </div>
                   ))
                 ) : (
-                  <div className="asset-empty">暂无资源</div>
+                  <div className="asset-empty">No assets yet</div>
                 )}
               </div>
             </div>
           )}
         </aside>
 
-        <section className="editor-panel">
-          <div className="panel-title">
+        <section
+          className={`editor-panel ${layoutMode === "preview" && !isMonacoVisible ? "monaco-collapsed" : ""}`}
+          style={combinedPanelStyle}
+        >
+          <div className="panel-title" onPointerDown={(event) => startFloatingDrag(event, editorPosition, setEditorPosition)}>
             <span>{activeFile}</span>
             {!isEditorReady && <span className="muted">Loading editor</span>}
+            {layoutMode === "preview" && (
+              <button className="panel-close" type="button" onClick={closeCombinedPanel} title="Close editor">
+                <X size={15} />
+              </button>
+            )}
           </div>
-          <Editor
-            height="100%"
-            language={getLanguage(activeFile)}
-            path={activeFile}
-            theme="vs-dark"
-            value={files[activeFile]}
-            onMount={() => setIsEditorReady(true)}
-            onChange={(value) => {
-              setFiles({ ...files, [activeFile]: value ?? "" });
-              setSavedVersion(null);
-              setSelectedVersion("current");
-            }}
-            options={{
-              automaticLayout: true,
-              fontFamily: "Cascadia Code, Consolas, monospace",
-              fontSize: 14,
-              minimap: { enabled: false },
-              padding: { top: 14, bottom: 14 },
-              scrollBeyondLastLine: false,
-              tabSize: 2,
-              wordWrap: "on"
-            }}
-          />
+          <div className="editor-frame">
+            <Editor
+              height="100%"
+              language={getLanguage(activeFile)}
+              path={activeFile}
+              theme="vs-dark"
+              value={files[activeFile]}
+              onMount={() => setIsEditorReady(true)}
+              onChange={(value) => {
+                setFiles({ ...files, [activeFile]: value ?? "" });
+                setSavedVersion(null);
+                setSelectedVersion("current");
+              }}
+              options={{
+                automaticLayout: true,
+                fontFamily: "Cascadia Code, Consolas, monospace",
+                fontSize: 14,
+                minimap: { enabled: false },
+                padding: { top: 14, bottom: 14 },
+                scrollBeyondLastLine: false,
+                tabSize: 2,
+                wordWrap: "on"
+              }}
+            />
+          </div>
           {mode === "html" && (
             <div className="ai-panel">
-              <div className="ai-title">
+              <div className="ai-title" onPointerDown={(event) => startFloatingDrag(event, editorPosition, setEditorPosition)}>
                 <span>
                   <Bot size={16} />
-                  AI 修改 HTML
+                  AI Edit HTML
                 </span>
                 {aiSummary && <span className="ai-summary">{aiSummary}</span>}
+                {layoutMode === "preview" && (
+                  <div className="ai-title-actions">
+                    <button
+                      className="panel-close"
+                      type="button"
+                      onClick={() => setIsMonacoVisible((isVisible) => !isVisible)}
+                      title={isMonacoVisible ? "Hide Monaco Editor" : "Show Monaco Editor"}
+                    >
+                      <Code2 size={15} />
+                    </button>
+                    <button className="panel-close" type="button" onClick={closeCombinedPanel} title="Close panel">
+                      <X size={15} />
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="ai-controls">
                 <textarea
                   value={aiInstruction}
                   onChange={(event) => setAiInstruction(event.target.value)}
-                  placeholder="例如：把首页改成一家咖啡店官网，增加菜单区域和预约按钮"
+                  placeholder="Describe the HTML change you want AI to make"
                   rows={3}
                   disabled={isAiEditing}
                 />
                 <div className="ai-actions">
                   <button type="button" className="ai-undo-button" onClick={undoAiEdit} disabled={!aiSnapshot || isAiEditing}>
                     <RotateCcw size={16} />
-                    撤销
+                    Undo
                   </button>
                   <button type="button" className="ai-edit-button" onClick={editHtmlWithAi} disabled={isAiEditing}>
                     {isAiEditing ? <Loader2 size={16} className="spin" /> : <Bot size={16} />}
-                    {isAiEditing ? "修改中" : "让 AI 修改"}
+                    {isAiEditing ? "Editing" : "Ask AI"}
                   </button>
                 </div>
               </div>
