@@ -890,7 +890,16 @@ function serializeEditableHtml(sourceHtml, bodyHtml) {
   return `${hasDoctype ? "<!doctype html>\n" : ""}${html}`;
 }
 
-function GrapesPreviewEditor({ html, css, isOverlayLayout, isSidePanelOpen, activePanel, onChange, onReady }) {
+function GrapesPreviewEditor({
+  html,
+  css,
+  isOverlayLayout,
+  isSidePanelOpen,
+  activePanel,
+  panelToolbar,
+  onChange,
+  onReady
+}) {
   const containerRef = useRef(null);
   const blocksRef = useRef(null);
   const layersRef = useRef(null);
@@ -965,9 +974,13 @@ function GrapesPreviewEditor({ html, css, isOverlayLayout, isSidePanelOpen, acti
     editorRef.current = editor;
     onReadyRef.current?.(editor);
 
+    const changeEvents = "component:update component:add component:remove style:property:update";
+    let isDestroying = false;
     const emitChange = () => {
+      if (isDestroying) return;
       window.clearTimeout(changeTimerRef.current);
       changeTimerRef.current = window.setTimeout(() => {
+        if (isDestroying) return;
         onChangeRef.current?.({
           html: editor.getHtml(),
           css: editor.getCss()
@@ -975,9 +988,11 @@ function GrapesPreviewEditor({ html, css, isOverlayLayout, isSidePanelOpen, acti
       }, 250);
     };
 
-    editor.on("component:update component:add component:remove style:property:update", emitChange);
+    editor.on(changeEvents, emitChange);
 
     return () => {
+      isDestroying = true;
+      editor.off(changeEvents, emitChange);
       window.clearTimeout(changeTimerRef.current);
       onReadyRef.current?.(null);
       editor.destroy();
@@ -990,6 +1005,7 @@ function GrapesPreviewEditor({ html, css, isOverlayLayout, isSidePanelOpen, acti
       <div className="grapes-preview-editor" ref={containerRef} />
       {isOverlayLayout && (
         <aside className={`grapes-side-panel ${isSidePanelOpen ? "open" : ""}`} aria-hidden={!isSidePanelOpen}>
+          {panelToolbar && <div className="grapes-panel-toolbar">{panelToolbar}</div>}
           <div className="grapes-panel-content">
             <div className={activePanel === "blocks" ? "grapes-manager active" : "grapes-manager"} ref={blocksRef} />
             <div className={activePanel === "layers" ? "grapes-manager active" : "grapes-manager"} ref={layersRef} />
@@ -1228,7 +1244,7 @@ function App() {
   const [isGrapesEditorOpen, setIsGrapesEditorOpen] = useState(false);
   const [grapesEditor, setGrapesEditor] = useState(null);
   const [grapesDevice, setGrapesDevice] = useState("Desktop");
-  const [activeGrapesPanel, setActiveGrapesPanel] = useState("styles");
+  const [activeGrapesPanel, setActiveGrapesPanel] = useState("blocks");
   const [isGrapesSidePanelOpen, setIsGrapesSidePanelOpen] = useState(false);
   const [toolbarPosition, setToolbarPosition] = useState({ x: 18, y: 18 });
   const [editorPosition, setEditorPosition] = useState({ x: 84, y: 548 });
@@ -1264,6 +1280,9 @@ function App() {
       if (!nextIsOpen) {
         setGrapesEditor(null);
         setIsGrapesSidePanelOpen(false);
+      } else if (layoutMode === "preview") {
+        setActiveGrapesPanel("blocks");
+        setIsGrapesSidePanelOpen(true);
       }
       return nextIsOpen;
     });
@@ -1276,7 +1295,7 @@ function App() {
 
   function toggleGrapesPanel(panel) {
     setActiveGrapesPanel(panel);
-    setIsGrapesSidePanelOpen((isOpen) => (activeGrapesPanel === panel ? !isOpen : true));
+    setIsGrapesSidePanelOpen(true);
   }
 
   function updateHtmlFromGrapes(nextPreview) {
@@ -1773,68 +1792,6 @@ function App() {
               <Paintbrush size={17} />
             </button>
           )}
-          {isGrapesEditorOpen && layoutMode === "preview" && (
-            <>
-              <span className="toolbar-divider" aria-hidden="true" />
-              <button
-                type="button"
-                className={grapesDevice === "Desktop" ? "active" : ""}
-                title="Desktop preview"
-                onClick={() => switchGrapesDevice("Desktop")}
-              >
-                <Monitor size={17} />
-              </button>
-              <button
-                type="button"
-                className={grapesDevice === "Tablet" ? "active" : ""}
-                title="Tablet preview"
-                onClick={() => switchGrapesDevice("Tablet")}
-              >
-                <Tablet size={17} />
-              </button>
-              <button
-                type="button"
-                className={grapesDevice === "Mobile portrait" ? "active" : ""}
-                title="Mobile preview"
-                onClick={() => switchGrapesDevice("Mobile portrait")}
-              >
-                <Smartphone size={17} />
-              </button>
-              <span className="toolbar-divider" aria-hidden="true" />
-              <button
-                type="button"
-                className={isGrapesSidePanelOpen && activeGrapesPanel === "blocks" ? "active" : ""}
-                title="Blocks"
-                onClick={() => toggleGrapesPanel("blocks")}
-              >
-                <LayoutDashboard size={17} />
-              </button>
-              <button
-                type="button"
-                className={isGrapesSidePanelOpen && activeGrapesPanel === "layers" ? "active" : ""}
-                title="Layer manager"
-                onClick={() => toggleGrapesPanel("layers")}
-              >
-                <Layers size={17} />
-              </button>
-              <button
-                type="button"
-                className={isGrapesSidePanelOpen && activeGrapesPanel === "styles" ? "active" : ""}
-                title="Style manager"
-                onClick={() => toggleGrapesPanel("styles")}
-              >
-                <SlidersHorizontal size={17} />
-              </button>
-              <button
-                type="button"
-                className={isGrapesSidePanelOpen && activeGrapesPanel === "settings" ? "active" : ""}
-                title="Settings"
-                onClick={() => toggleGrapesPanel("settings")}
-              >
-                <Settings size={17} />
-              </button>
-            </>
-          )}
           {mode === "html" && (
             <div className="deploy-menu">
               <button
@@ -2084,6 +2041,69 @@ function App() {
               isOverlayLayout={layoutMode === "preview"}
               isSidePanelOpen={isGrapesSidePanelOpen}
               activePanel={activeGrapesPanel}
+              panelToolbar={
+                layoutMode === "preview" ? (
+                  <div className="grapes-panel-controls">
+                    <button
+                      type="button"
+                      className={grapesDevice === "Desktop" ? "active" : ""}
+                      title="Desktop preview"
+                      onClick={() => switchGrapesDevice("Desktop")}
+                    >
+                      <Monitor size={17} />
+                    </button>
+                    <button
+                      type="button"
+                      className={grapesDevice === "Tablet" ? "active" : ""}
+                      title="Tablet preview"
+                      onClick={() => switchGrapesDevice("Tablet")}
+                    >
+                      <Tablet size={17} />
+                    </button>
+                    <button
+                      type="button"
+                      className={grapesDevice === "Mobile portrait" ? "active" : ""}
+                      title="Mobile preview"
+                      onClick={() => switchGrapesDevice("Mobile portrait")}
+                    >
+                      <Smartphone size={17} />
+                    </button>
+                    <span className="toolbar-divider" aria-hidden="true" />
+                    <button
+                      type="button"
+                      className={isGrapesSidePanelOpen && activeGrapesPanel === "blocks" ? "active" : ""}
+                      title="Blocks"
+                      onClick={() => toggleGrapesPanel("blocks")}
+                    >
+                      <LayoutDashboard size={17} />
+                    </button>
+                    <button
+                      type="button"
+                      className={isGrapesSidePanelOpen && activeGrapesPanel === "layers" ? "active" : ""}
+                      title="Layer manager"
+                      onClick={() => toggleGrapesPanel("layers")}
+                    >
+                      <Layers size={17} />
+                    </button>
+                    <button
+                      type="button"
+                      className={isGrapesSidePanelOpen && activeGrapesPanel === "styles" ? "active" : ""}
+                      title="Style manager"
+                      onClick={() => toggleGrapesPanel("styles")}
+                    >
+                      <SlidersHorizontal size={17} />
+                    </button>
+                    <button
+                      type="button"
+                      className={isGrapesSidePanelOpen && activeGrapesPanel === "settings" ? "active" : ""}
+                      title="Settings"
+                      onClick={() => toggleGrapesPanel("settings")}
+                    >
+                      <Settings size={17} />
+                    </button>
+                  </div>
+                ) : null
+              }
               onChange={updateHtmlFromGrapes}
               onReady={(editor) => {
                 setGrapesEditor(editor);

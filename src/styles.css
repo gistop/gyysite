@@ -902,6 +902,8 @@ button {
   right: 0;
   bottom: 0;
   z-index: 45;
+  display: flex;
+  flex-direction: column;
   width: min(360px, calc(100% - 48px));
   max-width: 92vw;
   overflow: hidden;
@@ -916,8 +918,45 @@ button {
   transform: translateX(0);
 }
 
+.grapes-panel-toolbar {
+  flex: 0 0 auto;
+  padding: 8px;
+  border-bottom: 1px solid rgba(216, 222, 232, 0.16);
+  background: rgba(15, 23, 42, 0.24);
+}
+
+.grapes-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.grapes-panel-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(216, 222, 232, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.grapes-panel-controls button.active {
+  border-color: #2f7df6;
+  background: #2f7df6;
+  color: #ffffff;
+}
+
+.grapes-panel-controls .toolbar-divider {
+  background: rgba(216, 222, 232, 0.26);
+}
+
 .grapes-panel-content {
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
 }
