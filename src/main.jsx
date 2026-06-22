@@ -1625,6 +1625,7 @@ function App() {
   useEffect(() => {
     if (layoutMode === "classic") {
       setIsGrapesSidePanelOpen(false);
+      setIsDrawerOpen(false);
     }
   }, [layoutMode]);
 
@@ -1747,16 +1748,16 @@ function App() {
           <button type="button" title="Reset template" onClick={() => switchMode(mode)}>
             <RotateCcw size={17} />
           </button>
-          <button type="button" title="Project and assets" onClick={() => setIsDrawerOpen((isOpen) => !isOpen)}>
-            {drawerSide === "left" ? <PanelLeftOpen size={17} /> : <PanelRightOpen size={17} />}
-          </button>
-          <button
-            type="button"
-            title="Switch drawer side"
-            onClick={() => setDrawerSide((side) => (side === "left" ? "right" : "left"))}
-          >
-            {drawerSide === "left" ? <PanelRightOpen size={17} /> : <PanelLeftOpen size={17} />}
-          </button>
+          {layoutMode === "preview" && (
+            <button
+              type="button"
+              className={isDrawerOpen ? "active" : ""}
+              title="Project and assets"
+              onClick={() => setIsDrawerOpen((isOpen) => !isOpen)}
+            >
+              {drawerSide === "left" ? <PanelLeftOpen size={17} /> : <PanelRightOpen size={17} />}
+            </button>
+          )}
           <button
             type="button"
             className={isCombinedPanelOpen ? "active" : ""}
