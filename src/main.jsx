@@ -21,7 +21,6 @@ import {
   HardDrive,
   LayoutDashboard,
   Maximize2,
-  MessageSquare,
   Loader2,
   Layers,
   Monitor,
@@ -1214,7 +1213,7 @@ function App() {
   const [mode, setMode] = useState("html");
   const [files, setFiles] = useState(templates.html.files);
   const [activeFile, setActiveFile] = useState(templates.html.entry);
-  const [preview, setPreview] = useState("");
+  const [preview, setPreview] = useState(() => makeHtmlPreview(templates.html.files, templates.html.entry));
   const [error, setError] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [runStatus, setRunStatus] = useState("Running");
@@ -1354,10 +1353,12 @@ function App() {
   }
 
   function switchMode(nextMode) {
+    const nextFiles = templates[nextMode].files;
+    const nextEntry = templates[nextMode].entry;
     setMode(nextMode);
-    setFiles(templates[nextMode].files);
-    setActiveFile(templates[nextMode].entry);
-    setPreview("");
+    setFiles(nextFiles);
+    setActiveFile(nextEntry);
+    setPreview(nextMode === "html" ? makeHtmlPreview(nextFiles, nextEntry) : "");
     setError("");
     setDeployResult(null);
     setSavedVersion(null);
@@ -1758,22 +1759,14 @@ function App() {
               {drawerSide === "left" ? <PanelLeftOpen size={17} /> : <PanelRightOpen size={17} />}
             </button>
           )}
-          <button
-            type="button"
-            className={isCombinedPanelOpen ? "active" : ""}
-            title="Monaco Editor"
-            onClick={toggleCombinedPanel}
-          >
-            <Code2 size={17} />
-          </button>
-          {mode === "html" && (
+          {layoutMode === "preview" && (
             <button
               type="button"
               className={isCombinedPanelOpen ? "active" : ""}
-              title="AI edit"
+              title="Code and AI editor"
               onClick={toggleCombinedPanel}
             >
-              <MessageSquare size={17} />
+              <Code2 size={17} />
             </button>
           )}
           {mode === "html" && (

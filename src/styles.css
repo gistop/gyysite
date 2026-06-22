@@ -735,6 +735,10 @@ button {
   transition: none;
 }
 
+.app-shell-preview .editor-panel.monaco-collapsed > .ai-panel {
+  border-top: 0;
+}
+
 .app-shell-preview .ai-title {
   cursor: grab;
   user-select: none;
