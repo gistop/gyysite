@@ -400,6 +400,20 @@ function getGitHubConfig() {
   };
 }
 
+function getPublishGitHubConfig() {
+  const config = getGitHubConfig();
+  const projectRepo = process.env.GITHUB_PROJECT_REPO?.trim();
+
+  if (!projectRepo) {
+    return config;
+  }
+
+  return {
+    ...config,
+    repo: makeRepositoryName(projectRepo)
+  };
+}
+
 function getGitHubCredentials() {
   const { GITHUB_OWNER, GITHUB_BRANCH = "main", GITHUB_TOKEN } = process.env;
 
@@ -412,6 +426,169 @@ function getGitHubCredentials() {
     branch: GITHUB_BRANCH,
     token: GITHUB_TOKEN
   };
+}
+
+function getCloudflareConfig() {
+  const {
+    CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_API_TOKEN,
+    CLOUDFLARE_PAGES_PROJECT_NAME = "",
+    CLOUDFLARE_PAGES_URL
+  } = process.env;
+
+  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) return null;
+
+  return {
+    accountId: CLOUDFLARE_ACCOUNT_ID,
+    apiToken: CLOUDFLARE_API_TOKEN,
+    projectName: CLOUDFLARE_PAGES_PROJECT_NAME.trim() || undefined,
+    pagesUrl: CLOUDFLARE_PAGES_URL?.replace(/\/+$/g, "")
+  };
+}
+
+function getCloudflareProjectName() {
+  const config = getCloudflareConfig();
+  const fallback = makeRepositoryName(projectRepositoryName || "pages");
+  return makeRepositoryName(config?.projectName || fallback);
+}
+
+async function requestCloudflare(pathname, options = {}) {
+  const config = getCloudflareConfig();
+  if (!config) throw new Error("Cloudflare Pages is not configured");
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(config.accountId)}${pathname.startsWith("/") ? pathname : `/${pathname}`}`,
+    {
+      ...options,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${config.apiToken}`,
+        "User-Agent": "gyysite-pages-publisher",
+        ...options.headers
+      }
+    }
+  );
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const details = Array.isArray(body.errors)
+      ? body.errors.map((item) => item.message || item.code || JSON.stringify(item)).join("; ")
+      : body.message || "";
+    const error = new Error([body.message || `Cloudflare request failed: ${response.status}`, details].filter(Boolean).join(": "));
+    error.status = response.status;
+    error.cloudflare = body;
+    throw error;
+  }
+
+  return body.result !== undefined ? body.result : body;
+}
+
+async function updateCloudflarePagesProjectSource(projectName, repoOwner, repoName, branch) {
+  return await requestCloudflare(`/pages/projects/${encodeURIComponent(projectName)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: {
+        type: "github",
+        config: {
+          owner: repoOwner,
+          repo_name: repoName,
+          production_branch: branch,
+          deployments_enabled: true
+        }
+      },
+      build_config: {
+        build_command: "",
+        destination_dir: ".",
+        root_dir: "/"
+      }
+    })
+  });
+}
+
+async function ensureCloudflarePagesProject(repoOwner, repoName, branch) {
+  const config = getCloudflareConfig();
+  if (!config) return null;
+
+  const projectName = getCloudflareProjectName();
+
+  let existingProject = null;
+  try {
+    existingProject = await requestCloudflare(`/pages/projects/${encodeURIComponent(projectName)}`);
+  } catch (error) {
+    if (error.status !== 404) throw error;
+  }
+
+  if (existingProject) {
+    const source = existingProject.source || {};
+    const sourceConfig = source.config || {};
+    const needsSourceUpdate =
+      source.type !== "github" ||
+      sourceConfig.owner !== repoOwner ||
+      sourceConfig.repo_name !== repoName ||
+      sourceConfig.production_branch !== branch ||
+      existingProject?.status === "disconnected";
+
+    if (needsSourceUpdate) {
+      return await updateCloudflarePagesProjectSource(projectName, repoOwner, repoName, branch);
+    }
+
+    return existingProject;
+  }
+
+  const body = {
+    name: projectName,
+    production_branch: branch,
+    source: {
+      type: "github",
+      config: {
+        owner: repoOwner,
+        repo_name: repoName,
+        production_branch: branch,
+        deployments_enabled: true
+      }
+    },
+    build_config: {
+      build_command: "",
+      destination_dir: ".",
+      root_dir: "/"
+    }
+  };
+
+  try {
+    return await requestCloudflare(`/pages/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  } catch (error) {
+    if (error.status === 409) {
+      return await requestCloudflare(`/pages/projects/${encodeURIComponent(projectName)}`);
+    }
+    throw error;
+  }
+}
+
+async function createCloudflarePagesDeployment(branch) {
+  const config = getCloudflareConfig();
+  if (!config) return null;
+
+  const projectName = getCloudflareProjectName();
+  const pathname = `/pages/projects/${encodeURIComponent(projectName)}/deployments`;
+
+  try {
+    return await requestCloudflare(pathname, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch })
+    });
+  } catch (error) {
+    if (![400, 415, 422].includes(error.status)) throw error;
+
+    return await requestCloudflare(pathname, {
+      method: "POST"
+    });
+  }
 }
 
 async function requestGitHubApi(pathname, options = {}) {
@@ -643,7 +820,7 @@ async function getGitHubFileSha(filePath, branch) {
 }
 
 async function publishGitHubSite(siteId, files) {
-  const { branch, prefix, cloudflarePagesUrl } = getGitHubConfig();
+  const { owner, repo, branch, prefix, cloudflarePagesUrl } = getPublishGitHubConfig();
   const commitUrls = [];
 
   for (const [filePath, content] of files) {
@@ -670,10 +847,35 @@ async function publishGitHubSite(siteId, files) {
   }
 
   const sitePath = prefix ? `${prefix}/index.html` : "index.html";
-  const cloudflareUrl = cloudflarePagesUrl ? `${cloudflarePagesUrl}/${sitePath}` : null;
+  let cloudflareUrl = cloudflarePagesUrl ? `${cloudflarePagesUrl}/${sitePath}` : null;
+  let cloudflareDeployment = null;
+  let cloudflareError = null;
+
+  try {
+    const project = await ensureCloudflarePagesProject(owner, repo, branch);
+    cloudflareDeployment = await createCloudflarePagesDeployment(branch);
+
+    if (cloudflareDeployment?.url) {
+      cloudflareUrl = cloudflareDeployment.url;
+    } else if (cloudflareDeployment?.deployment_trigger?.metadata?.deployment_url) {
+      cloudflareUrl = cloudflareDeployment.deployment_trigger.metadata.deployment_url;
+    }
+
+    if (!cloudflareDeployment?.url && project?.canonical_deployment?.url) {
+      cloudflareUrl = project.canonical_deployment.url;
+    } else if (!cloudflareDeployment?.url && project?.subdomain) {
+      cloudflareUrl = `https://${project.subdomain}`;
+    }
+  } catch (error) {
+    cloudflareError = error.message || String(error);
+    console.warn("Cloudflare Pages project ensure failed:", error.message || error);
+  }
 
   return {
     cloudflareUrl,
+    cloudflareDeploymentId: cloudflareDeployment?.id || null,
+    cloudflareDeploymentUrl: cloudflareDeployment?.url || null,
+    cloudflareError,
     githubCommitUrl: commitUrls.at(-1) || null,
     githubCommitUrls: commitUrls
   };
