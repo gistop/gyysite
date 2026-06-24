@@ -433,7 +433,10 @@ function getCloudflareConfig() {
     CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_API_TOKEN,
     CLOUDFLARE_PAGES_PROJECT_NAME = "",
-    CLOUDFLARE_PAGES_URL
+    CLOUDFLARE_PAGES_URL,
+    CLOUDFLARE_D1_BINDING_NAME = "DB",
+    CLOUDFLARE_D1_DATABASE_ID = "",
+    CLOUDFLARE_D1_DATABASE_NAME = ""
   } = process.env;
 
   if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) return null;
@@ -442,7 +445,10 @@ function getCloudflareConfig() {
     accountId: CLOUDFLARE_ACCOUNT_ID,
     apiToken: CLOUDFLARE_API_TOKEN,
     projectName: CLOUDFLARE_PAGES_PROJECT_NAME.trim() || undefined,
-    pagesUrl: CLOUDFLARE_PAGES_URL?.replace(/\/+$/g, "")
+    pagesUrl: CLOUDFLARE_PAGES_URL?.replace(/\/+$/g, ""),
+    d1BindingName: CLOUDFLARE_D1_BINDING_NAME.trim() || "DB",
+    d1DatabaseId: CLOUDFLARE_D1_DATABASE_ID.trim(),
+    d1DatabaseName: CLOUDFLARE_D1_DATABASE_NAME.trim()
   };
 }
 
@@ -470,7 +476,7 @@ async function requestCloudflare(pathname, options = {}) {
   );
 
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
+  if (!response.ok || body.success === false) {
     const details = Array.isArray(body.errors)
       ? body.errors.map((item) => item.message || item.code || JSON.stringify(item)).join("; ")
       : body.message || "";
@@ -567,6 +573,124 @@ async function ensureCloudflarePagesProject(repoOwner, repoName, branch) {
     }
     throw error;
   }
+}
+
+function getCloudflareD1Config() {
+  const config = getCloudflareConfig();
+  if (!config || (!config.d1DatabaseId && !config.d1DatabaseName)) return null;
+
+  return {
+    bindingName: config.d1BindingName,
+    databaseId: config.d1DatabaseId,
+    databaseName: config.d1DatabaseName
+  };
+}
+
+async function findCloudflareD1DatabaseByName(databaseName) {
+  const databases = await requestCloudflare(
+    `/d1/database?name=${encodeURIComponent(databaseName)}&per_page=100`
+  );
+  const list = Array.isArray(databases) ? databases : databases?.result || [];
+
+  return list.find((database) => database.name === databaseName) || null;
+}
+
+async function ensureCloudflareD1Database() {
+  const d1Config = getCloudflareD1Config();
+  if (!d1Config) return null;
+
+  if (d1Config.databaseId) {
+    return {
+      id: d1Config.databaseId,
+      name: d1Config.databaseName || null,
+      created: false
+    };
+  }
+
+  const existing = await findCloudflareD1DatabaseByName(d1Config.databaseName);
+  if (existing?.uuid || existing?.id) {
+    return {
+      id: existing.uuid || existing.id,
+      name: existing.name,
+      created: false
+    };
+  }
+
+  const created = await requestCloudflare("/d1/database", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: d1Config.databaseName })
+  });
+
+  return {
+    id: created.uuid || created.id,
+    name: created.name || d1Config.databaseName,
+    created: true
+  };
+}
+
+function withD1Binding(deploymentConfig, bindingName, databaseId) {
+  const current = deploymentConfig && typeof deploymentConfig === "object" ? deploymentConfig : {};
+
+  return {
+    ...current,
+    d1_databases: {
+      ...(current.d1_databases || {}),
+      [bindingName]: {
+        ...(current.d1_databases?.[bindingName] || {}),
+        id: databaseId
+      }
+    }
+  };
+}
+
+async function ensureCloudflarePagesD1Binding(projectName) {
+  const d1Config = getCloudflareD1Config();
+  if (!d1Config) return null;
+
+  const database = await ensureCloudflareD1Database();
+  if (!database?.id) throw new Error("Cloudflare D1 database id is missing");
+
+  const project = await requestCloudflare(`/pages/projects/${encodeURIComponent(projectName)}`);
+  const deploymentConfigs = project.deployment_configs || {};
+  const production = withD1Binding(deploymentConfigs.production, d1Config.bindingName, database.id);
+  const preview = withD1Binding(deploymentConfigs.preview, d1Config.bindingName, database.id);
+  const alreadyBound =
+    deploymentConfigs.production?.d1_databases?.[d1Config.bindingName]?.id === database.id &&
+    deploymentConfigs.preview?.d1_databases?.[d1Config.bindingName]?.id === database.id;
+
+  if (!alreadyBound) {
+    await requestCloudflare(`/pages/projects/${encodeURIComponent(projectName)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        deployment_configs: {
+          production,
+          preview
+        }
+      })
+    });
+  }
+
+  const updatedProject = await requestCloudflare(`/pages/projects/${encodeURIComponent(projectName)}`);
+  const updatedConfigs = updatedProject.deployment_configs || {};
+  const productionId = updatedConfigs.production?.d1_databases?.[d1Config.bindingName]?.id;
+  const previewId = updatedConfigs.preview?.d1_databases?.[d1Config.bindingName]?.id;
+
+  if (productionId !== database.id || previewId !== database.id) {
+    throw new Error(
+      `Cloudflare Pages D1 binding was not applied for ${d1Config.bindingName}`
+    );
+  }
+
+  return {
+    bindingName: d1Config.bindingName,
+    databaseId: database.id,
+    databaseName: database.name,
+    databaseCreated: database.created,
+    bound: true,
+    updated: !alreadyBound
+  };
 }
 
 async function createCloudflarePagesDeployment(branch) {
@@ -850,9 +974,13 @@ async function publishGitHubSite(siteId, files) {
   let cloudflareUrl = cloudflarePagesUrl ? `${cloudflarePagesUrl}/${sitePath}` : null;
   let cloudflareDeployment = null;
   let cloudflareError = null;
+  let cloudflareD1Binding = null;
 
   try {
     const project = await ensureCloudflarePagesProject(owner, repo, branch);
+    if (project) {
+      cloudflareD1Binding = await ensureCloudflarePagesD1Binding(getCloudflareProjectName());
+    }
     cloudflareDeployment = await createCloudflarePagesDeployment(branch);
 
     if (cloudflareDeployment?.url) {
@@ -869,12 +997,16 @@ async function publishGitHubSite(siteId, files) {
   } catch (error) {
     cloudflareError = error.message || String(error);
     console.warn("Cloudflare Pages project ensure failed:", error.message || error);
+    if (getCloudflareD1Config()) {
+      throw error;
+    }
   }
 
   return {
     cloudflareUrl,
     cloudflareDeploymentId: cloudflareDeployment?.id || null,
     cloudflareDeploymentUrl: cloudflareDeployment?.url || null,
+    cloudflareD1Binding,
     cloudflareError,
     githubCommitUrl: commitUrls.at(-1) || null,
     githubCommitUrls: commitUrls
