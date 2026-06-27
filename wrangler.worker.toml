@@ -1,0 +1,14 @@
+name = "gyysite-api"
+main = "workers/api.js"
+compatibility_date = "2026-06-27"
+
+[vars]
+CORS_ORIGIN = "*"
+DEEPSEEK_MODEL = "deepseek-v4-pro"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+GITHUB_BRANCH = "main"
+GITHUB_PUBLISH_PREFIX = ""
+GITHUB_PROJECT_REPO = "testsite"
+CLOUDFLARE_PAGES_PROJECT_NAME = ""
+R2_ASSET_PREFIX = "assets"
+R2_MAX_ASSET_BYTES = "20971520"

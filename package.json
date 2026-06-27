@@ -13,7 +13,11 @@
     "preview": "vite preview --host 0.0.0.0",
     "dev:api": "npm --workspace apps/api run dev",
     "start:api": "npm --workspace apps/api start",
-    "compose:up": "docker compose up --build"
+    "compose:up": "docker compose up --build",
+    "cf:pages:build": "npm run build",
+    "cf:pages:deploy": "npm run build && npx wrangler pages deploy dist --project-name gyysite",
+    "cf:worker:dev": "npx wrangler dev --config wrangler.worker.toml",
+    "cf:worker:deploy": "npx wrangler deploy --config wrangler.worker.toml"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

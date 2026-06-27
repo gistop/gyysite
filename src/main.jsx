@@ -45,6 +45,9 @@ const runtimeConfig = {
   prewarmEsbuild: true
 };
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/g, "");
+const apiUrl = (path) => `${apiBaseUrl}${path}`;
+
 const deployTargets = [
   { key: "web", label: "Web Server", icon: HardDrive },
   { key: "oss", label: "OSS", icon: Database },
@@ -1376,7 +1379,7 @@ function App() {
     setError("");
 
     try {
-      const response = await fetch("/api/deploy/html", {
+      const response = await fetch(apiUrl("/api/deploy/html"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -1408,7 +1411,7 @@ function App() {
     setError("");
 
     try {
-      const response = await fetch("/api/projects/save-version", {
+      const response = await fetch(apiUrl("/api/projects/save-version"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -1438,7 +1441,7 @@ function App() {
     setIsLoadingVersions(true);
 
     try {
-      const response = await fetch("/api/projects/versions");
+      const response = await fetch(apiUrl("/api/projects/versions"));
       const result = await readJsonResponse(response, "Failed to load versions");
 
       if (!response.ok || !result.ok) {
@@ -1462,7 +1465,7 @@ function App() {
     setError("");
 
     try {
-      const response = await fetch(`/api/projects/versions/${encodeURIComponent(sha)}`);
+      const response = await fetch(apiUrl(`/api/projects/versions/${encodeURIComponent(sha)}`));
       const result = await readJsonResponse(response, "Failed to load version");
 
       if (!response.ok || !result.ok) {
@@ -1502,7 +1505,7 @@ function App() {
     setAssetError("");
 
     try {
-      const signResponse = await fetch("/api/assets/r2/presign", {
+      const signResponse = await fetch(apiUrl("/api/assets/r2/presign"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -1563,7 +1566,7 @@ function App() {
     setAiSnapshot({ files, activeFile, preview });
 
     try {
-      const response = await fetch("/api/ai/edit-html", {
+      const response = await fetch(apiUrl("/api/ai/edit-html"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
