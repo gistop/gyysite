@@ -1,6 +1,7 @@
 const allowedExtensions = new Set([".html", ".css", ".js", ".json", ".txt", ".svg", ".png", ".jpg", ".jpeg", ".webp"]);
 const projectAllowedExtensions = new Set([...allowedExtensions, ".jsx", ".ts", ".tsx", ".vue", ".md"]);
 const encoder = new TextEncoder();
+const aiJobPrefix = "ai-jobs";
 
 function envValue(env, key, fallback = "") {
   return env?.[key] ?? fallback;
@@ -48,6 +49,19 @@ function byteLength(value) {
 
 function randomId() {
   return crypto.randomUUID().slice(0, 8);
+}
+
+function makeJobId() {
+  return `job_${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function requireBinding(env, key) {
+  if (!env?.[key]) throw new Error(`Missing Cloudflare binding: ${key}`);
+  return env[key];
 }
 
 function makeSiteId(input) {
@@ -265,6 +279,10 @@ function getGitHubCredentials(env) {
   return { owner, branch, token };
 }
 
+function hasGitHubCredentials(env) {
+  return Boolean(envValue(env, "GITHUB_OWNER") && envValue(env, "GITHUB_TOKEN"));
+}
+
 function getGitHubConfig(env) {
   const { owner, branch, token } = getGitHubCredentials(env);
   const repo = envValue(env, "GITHUB_REPO");
@@ -418,6 +436,8 @@ async function saveGitHubProjectVersion(env, files, message) {
 }
 
 async function listGitHubProjectVersions(env) {
+  if (!hasGitHubCredentials(env)) return [];
+
   const { owner, branch } = getGitHubCredentials(env);
   const repo = makeRepositoryName(envValue(env, "GITHUB_PROJECT_REPO", "testsite"));
   let repository;
@@ -790,10 +810,10 @@ function buildHtmlEditMessages({ instruction, activeFile, files }) {
 
 async function editHtmlWithAi(env, body) {
   const apiKey = envValue(env, "DEEPSEEK_API_KEY");
-  if (!apiKey) return json({ ok: false, error: "Missing DEEPSEEK_API_KEY" }, 500);
+  if (!apiKey) throw new Error("Missing DEEPSEEK_API_KEY");
 
   const instruction = String(body?.instruction || "").trim();
-  if (!instruction) return json({ ok: false, error: "Please enter an edit instruction first." }, 400);
+  if (!instruction) throw new Error("Please enter an edit instruction first.");
 
   const files = validateFiles(body?.files, { htmlOnly: true, requireIndex: true, env });
   const activeFile = normalizeProjectPath(body?.activeFile || "index.html");
@@ -817,11 +837,265 @@ async function editHtmlWithAi(env, body) {
 
   const content = result.choices?.[0]?.message?.content || "";
   const parsed = parseJsonObject(content);
-  return json({
-    ok: true,
+  return {
     summary: typeof parsed.summary === "string" ? parsed.summary : "AI edit completed.",
     files: validateReturnedHtmlFiles(parsed.files, env)
+  };
+}
+
+function jobObjectKey(jobId, name) {
+  return `${aiJobPrefix}/${jobId}/${name}`;
+}
+
+function publicJob(job) {
+  if (!job) return null;
+  return {
+    jobId: job.id,
+    status: job.status,
+    progress: job.progress || 0,
+    stage: job.stage || "",
+    summary: job.summary || "",
+    error: job.error || "",
+    createdAt: job.created_at,
+    updatedAt: job.updated_at,
+    resultKey: job.result_key || ""
+  };
+}
+
+async function upsertAiJob(env, job) {
+  const db = requireBinding(env, "AI_JOBS_DB");
+  const timestamp = nowIso();
+  await db
+    .prepare(
+      `INSERT INTO ai_jobs (id, status, progress, stage, input_key, result_key, summary, error, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         status = excluded.status,
+         progress = excluded.progress,
+         stage = excluded.stage,
+         input_key = excluded.input_key,
+         result_key = excluded.result_key,
+         summary = excluded.summary,
+         error = excluded.error,
+         updated_at = excluded.updated_at`
+    )
+    .bind(
+      job.id,
+      job.status,
+      job.progress ?? 0,
+      job.stage || "",
+      job.inputKey || "",
+      job.resultKey || "",
+      job.summary || "",
+      job.error || "",
+      job.createdAt || timestamp,
+      job.updatedAt || timestamp
+    )
+    .run();
+}
+
+async function updateAiJob(env, jobId, patch) {
+  const current = await getAiJob(env, jobId);
+  if (!current) throw new Error(`AI job not found: ${jobId}`);
+  await upsertAiJob(env, {
+    id: jobId,
+    status: patch.status ?? current.status,
+    progress: patch.progress ?? current.progress,
+    stage: patch.stage ?? current.stage,
+    inputKey: patch.inputKey ?? current.input_key,
+    resultKey: patch.resultKey ?? current.result_key,
+    summary: patch.summary ?? current.summary,
+    error: patch.error ?? current.error,
+    createdAt: current.created_at,
+    updatedAt: nowIso()
   });
+  const updated = await getAiJob(env, jobId);
+  await notifyAiJob(env, jobId, publicJob(updated));
+  return updated;
+}
+
+async function getAiJob(env, jobId) {
+  const db = requireBinding(env, "AI_JOBS_DB");
+  return db.prepare("SELECT * FROM ai_jobs WHERE id = ?").bind(jobId).first();
+}
+
+async function notifyAiJob(env, jobId, event) {
+  if (!env?.AI_JOB_DO) return;
+  try {
+    const id = env.AI_JOB_DO.idFromName(jobId);
+    const stub = env.AI_JOB_DO.get(id);
+    const notify = stub.fetch("https://ai-job.local/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(event)
+    });
+    const timeout = new Promise((resolve) => setTimeout(resolve, 1500));
+    await Promise.race([notify, timeout]);
+  } catch (error) {
+    console.warn("AI job notification failed", jobId, error?.message || String(error));
+  }
+}
+
+async function readR2Json(env, key) {
+  if (!key) return null;
+  const bucket = requireBinding(env, "AI_JOB_BUCKET");
+  const object = await bucket.get(key);
+  if (!object) return null;
+  return JSON.parse(await object.text());
+}
+
+async function createAiEditJob(env, body) {
+  requireBinding(env, "AI_JOBS_DB");
+  const bucket = requireBinding(env, "AI_JOB_BUCKET");
+  const queue = requireBinding(env, "AI_JOBS_QUEUE");
+
+  const instruction = String(body?.instruction || "").trim();
+  if (!instruction) throw new Error("Please enter an edit instruction first.");
+
+  const files = validateFiles(body?.files, { htmlOnly: true, requireIndex: true, env });
+  const activeFile = normalizeProjectPath(body?.activeFile || "index.html");
+  if (!files.has(activeFile)) throw new Error(`Active file not found: ${activeFile}`);
+
+  const jobId = makeJobId();
+  const inputKey = jobObjectKey(jobId, "input.json");
+  const payload = {
+    jobId,
+    instruction,
+    activeFile,
+    files: Object.fromEntries(files),
+    createdAt: nowIso()
+  };
+
+  await bucket.put(inputKey, JSON.stringify(payload), {
+    httpMetadata: { contentType: "application/json; charset=utf-8" }
+  });
+  await upsertAiJob(env, {
+    id: jobId,
+    status: "queued",
+    progress: 5,
+    stage: "Queued",
+    inputKey,
+    createdAt: payload.createdAt,
+    updatedAt: payload.createdAt
+  });
+  await queue.send({ jobId, inputKey });
+  await notifyAiJob(env, jobId, { jobId, status: "queued", progress: 5, stage: "Queued", createdAt: payload.createdAt });
+
+  return { jobId, status: "queued", progress: 5, stage: "Queued" };
+}
+
+async function runAiEditJob(env, message) {
+  const jobId = String(message?.jobId || "");
+  if (!jobId) throw new Error("Queue message is missing jobId");
+
+  console.log("AI job started", jobId);
+  const job = await getAiJob(env, jobId);
+  if (!job) throw new Error(`AI job not found: ${jobId}`);
+  if (job.status === "cancel_requested" || job.status === "cancelled") {
+    await updateAiJob(env, jobId, { status: "cancelled", progress: 100, stage: "Cancelled" });
+    return;
+  }
+
+  await updateAiJob(env, jobId, { status: "running", progress: 20, stage: "Preparing AI request" });
+  const payload = await readR2Json(env, message.inputKey || job.input_key);
+  if (!payload) throw new Error(`AI job payload not found: ${jobId}`);
+
+  console.log("AI job payload loaded", jobId);
+  await updateAiJob(env, jobId, { status: "streaming", progress: 40, stage: "Generating website code" });
+  const result = await editHtmlWithAi(env, payload);
+  console.log("AI job generated result", jobId);
+  const latestJob = await getAiJob(env, jobId);
+  if (latestJob?.status === "cancel_requested" || latestJob?.status === "cancelled") {
+    await updateAiJob(env, jobId, { status: "cancelled", progress: 100, stage: "Cancelled" });
+    return;
+  }
+  const resultKey = jobObjectKey(jobId, "result.json");
+  await requireBinding(env, "AI_JOB_BUCKET").put(resultKey, JSON.stringify(result), {
+    httpMetadata: { contentType: "application/json; charset=utf-8" }
+  });
+
+  await updateAiJob(env, jobId, {
+    status: "succeeded",
+    progress: 100,
+    stage: "Completed",
+    resultKey,
+    summary: result.summary || "AI edit completed."
+  });
+  console.log("AI job completed", jobId);
+}
+
+async function failAiEditJob(env, jobId, error) {
+  console.error("AI job failed", jobId, error?.message || String(error));
+  await updateAiJob(env, jobId, {
+    status: "failed",
+    progress: 100,
+    stage: "Failed",
+    error: error?.message || String(error)
+  });
+}
+
+function ssePayload(event, data) {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+export class AiJobDurableObject {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.clients = new Set();
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    if (request.method === "GET" && url.pathname === "/events") {
+      const { readable, writable } = new TransformStream();
+      const writer = writable.getWriter();
+      const client = { writer };
+      this.clients.add(client);
+
+      const send = async (event, data) => {
+        await writer.write(encoder.encode(ssePayload(event, data)));
+      };
+
+      const lastEvent = await this.state.storage.get("lastEvent");
+      await send("connected", lastEvent || { status: "connected" });
+      const keepAlive = setInterval(() => {
+        writer.write(encoder.encode(": keepalive\n\n")).catch(() => {});
+      }, 15000);
+
+      request.signal.addEventListener("abort", () => {
+        clearInterval(keepAlive);
+        this.clients.delete(client);
+        writer.close().catch(() => {});
+      });
+
+      return new Response(readable, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-store",
+          Connection: "keep-alive"
+        }
+      });
+    }
+
+    if (request.method === "POST" && url.pathname === "/notify") {
+      const event = await request.json();
+      await this.state.storage.put("lastEvent", event);
+      const eventName = event.status || "message";
+      const chunk = encoder.encode(ssePayload(eventName, event));
+      for (const client of [...this.clients]) {
+        try {
+          await client.writer.write(chunk);
+        } catch {
+          this.clients.delete(client);
+        }
+      }
+      return new Response("ok");
+    }
+
+    return new Response("Not found", { status: 404 });
+  }
 }
 
 async function handleApi(request, env) {
@@ -879,14 +1153,56 @@ async function handleApi(request, env) {
     return json({ ok: true, target, siteId, ...githubResult, url: githubResult.cloudflareUrl || githubResult.githubCommitUrl });
   }
 
-  if (method === "POST" && url.pathname === "/api/ai/edit-html") {
-    return editHtmlWithAi(env, await readJson(request));
+  if (method === "POST" && (url.pathname === "/api/ai/jobs" || url.pathname === "/api/ai/edit-html")) {
+    return json({ ok: true, ...(await createAiEditJob(env, await readJson(request))) }, 202, request, env);
+  }
+
+  const aiJobMatch = url.pathname.match(/^\/api\/ai\/jobs\/([^/]+)$/);
+  if (method === "GET" && aiJobMatch) {
+    const job = await getAiJob(env, aiJobMatch[1]);
+    if (!job) return json({ ok: false, error: "AI job not found" }, 404, request, env);
+    return json({ ok: true, job: publicJob(job) }, 200, request, env);
+  }
+
+  const aiJobResultMatch = url.pathname.match(/^\/api\/ai\/jobs\/([^/]+)\/result$/);
+  if (method === "GET" && aiJobResultMatch) {
+    const job = await getAiJob(env, aiJobResultMatch[1]);
+    if (!job) return json({ ok: false, error: "AI job not found" }, 404, request, env);
+    if (job.status !== "succeeded") return json({ ok: false, error: "AI job is not complete", job: publicJob(job) }, 409, request, env);
+    const result = await readR2Json(env, job.result_key);
+    return json({ ok: true, job: publicJob(job), ...result }, 200, request, env);
+  }
+
+  const aiJobCancelMatch = url.pathname.match(/^\/api\/ai\/jobs\/([^/]+)\/cancel$/);
+  if (method === "POST" && aiJobCancelMatch) {
+    const job = await updateAiJob(env, aiJobCancelMatch[1], { status: "cancel_requested", stage: "Cancellation requested" });
+    return json({ ok: true, job: publicJob(job) }, 200, request, env);
+  }
+
+  const aiJobEventsMatch = url.pathname.match(/^\/api\/ai\/jobs\/([^/]+)\/events$/);
+  if (method === "GET" && aiJobEventsMatch) {
+    requireBinding(env, "AI_JOB_DO");
+    const id = env.AI_JOB_DO.idFromName(aiJobEventsMatch[1]);
+    return env.AI_JOB_DO.get(id).fetch("https://ai-job.local/events");
   }
 
   return json({ ok: false, error: "Not found" }, 404);
 }
 
 export default {
+  async queue(batch, env) {
+    for (const message of batch.messages) {
+      const jobId = message.body?.jobId;
+      try {
+        await runAiEditJob(env, message.body);
+        message.ack();
+      } catch (error) {
+        if (jobId) await failAiEditJob(env, jobId, error).catch(() => {});
+        message.retry();
+      }
+    }
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
 

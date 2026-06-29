@@ -1227,6 +1227,7 @@ function App() {
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiSummary, setAiSummary] = useState("");
   const [isAiEditing, setIsAiEditing] = useState(false);
+  const [aiJob, setAiJob] = useState(null);
   const [aiSnapshot, setAiSnapshot] = useState(null);
   const [leftPanelTab, setLeftPanelTab] = useState("project");
   const [isAssetUploading, setIsAssetUploading] = useState(false);
@@ -1251,6 +1252,8 @@ function App() {
   const [toolbarPosition, setToolbarPosition] = useState({ x: 18, y: 18 });
   const [editorPosition, setEditorPosition] = useState({ x: 84, y: 548 });
   const frameRef = useRef(null);
+  const aiEventSourceRef = useRef(null);
+  const aiPollRef = useRef(null);
 
   const fileNames = useMemo(() => Object.keys(files), [files]);
   const previewSandbox =
@@ -1551,6 +1554,142 @@ function App() {
     }
   }
 
+  function closeAiEvents() {
+    if (aiEventSourceRef.current) {
+      aiEventSourceRef.current.close();
+      aiEventSourceRef.current = null;
+    }
+    if (aiPollRef.current) {
+      window.clearInterval(aiPollRef.current);
+      aiPollRef.current = null;
+    }
+  }
+
+  function updateAiJobProgress(job) {
+    if (!job) return;
+    setAiJob(job);
+    if (job.stage) {
+      const percent = Number.isFinite(job.progress) ? ` ${job.progress}%` : "";
+      setAiSummary(`${job.stage}${percent}`);
+    }
+  }
+
+  async function handleFinishedAiJob(jobId, job) {
+    closeAiEvents();
+    setAiJob(job);
+    setAiSummary(job?.summary || "AI edit completed.");
+    try {
+      await loadAiJobResult(jobId, job?.summary);
+    } catch (err) {
+      setError(err.message || String(err));
+    } finally {
+      setIsAiEditing(false);
+    }
+  }
+
+  function pollAiJob(jobId) {
+    if (aiPollRef.current) window.clearInterval(aiPollRef.current);
+
+    aiPollRef.current = window.setInterval(async () => {
+      try {
+        const response = await fetch(apiUrl(`/api/ai/jobs/${jobId}`));
+        const result = await readJsonResponse(response, "AI job status failed");
+        if (!response.ok || !result.ok) throw new Error(result.error || "AI job status failed");
+
+        const job = result.job;
+        updateAiJobProgress(job);
+
+        if (job?.status === "succeeded") {
+          await handleFinishedAiJob(jobId, job);
+        } else if (job?.status === "failed") {
+          closeAiEvents();
+          setError(job.error || "AI edit failed");
+          setIsAiEditing(false);
+        } else if (job?.status === "cancelled") {
+          closeAiEvents();
+          setAiSummary("AI edit cancelled.");
+          setIsAiEditing(false);
+        }
+      } catch (err) {
+        setAiSummary(`Checking AI job status... ${err.message || String(err)}`);
+      }
+    }, 3000);
+  }
+
+  async function applyAiEditResult(result, fallbackSummary) {
+    const nextFiles = {
+      ...files,
+      ...result.files
+    };
+    const nextActiveFile = result.files[activeFile] != null ? activeFile : Object.keys(result.files)[0] || activeFile;
+    const entry = nextActiveFile.endsWith(".html") ? nextActiveFile : templates.html.entry;
+    const html = await bundleProject("html", nextFiles, entry);
+
+    setFiles(nextFiles);
+    setActiveFile(nextActiveFile);
+    setPreview(html);
+    setAiSummary(result.summary || fallbackSummary || "AI edit completed.");
+    setAiInstruction("");
+    setAiJob(null);
+    setDeployResult(null);
+    setSavedVersion(null);
+    setSelectedVersion("current");
+  }
+
+  async function loadAiJobResult(jobId, fallbackSummary) {
+    const response = await fetch(apiUrl(`/api/ai/jobs/${jobId}/result`));
+    const result = await readJsonResponse(response, "AI edit result failed");
+
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error || "AI edit result failed");
+    }
+
+    await applyAiEditResult(result, fallbackSummary);
+  }
+
+  function watchAiJob(jobId) {
+    closeAiEvents();
+
+    const source = new EventSource(apiUrl(`/api/ai/jobs/${jobId}/events`));
+    aiEventSourceRef.current = source;
+
+    const handleProgress = (event) => {
+      const data = JSON.parse(event.data || "{}");
+      updateAiJobProgress(data);
+    };
+
+    for (const eventName of ["connected", "queued", "running", "streaming", "cancel_requested"]) {
+      source.addEventListener(eventName, handleProgress);
+    }
+
+    source.addEventListener("cancelled", (event) => {
+      const data = JSON.parse(event.data || "{}");
+      closeAiEvents();
+      setAiJob(data);
+      setAiSummary("AI edit cancelled.");
+      setIsAiEditing(false);
+    });
+
+    source.addEventListener("succeeded", async (event) => {
+      const data = JSON.parse(event.data || "{}");
+      await handleFinishedAiJob(jobId, data);
+    });
+
+    source.addEventListener("failed", (event) => {
+      const data = JSON.parse(event.data || "{}");
+      closeAiEvents();
+      setAiJob(data);
+      setError(data.error || "AI edit failed");
+      setIsAiEditing(false);
+    });
+
+    source.onerror = () => {
+      setAiSummary("Connection interrupted, checking job status...");
+    };
+
+    pollAiJob(jobId);
+  }
+
   async function editHtmlWithAi() {
     if (mode !== "html" || isAiEditing) return;
 
@@ -1562,11 +1701,12 @@ function App() {
 
     setIsAiEditing(true);
     setError("");
-    setAiSummary("");
+    setAiSummary("Creating AI job...");
+    setAiJob(null);
     setAiSnapshot({ files, activeFile, preview });
 
     try {
-      const response = await fetch(apiUrl("/api/ai/edit-html"), {
+      const response = await fetch(apiUrl("/api/ai/jobs"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -1583,26 +1723,29 @@ function App() {
         throw new Error(result.error || "AI edit failed");
       }
 
-      const nextFiles = {
-        ...files,
-        ...result.files
-      };
-      const nextActiveFile = result.files[activeFile] != null ? activeFile : Object.keys(result.files)[0] || activeFile;
-      const entry = nextActiveFile.endsWith(".html") ? nextActiveFile : templates.html.entry;
-      const html = await bundleProject("html", nextFiles, entry);
+      setAiJob(result);
+      setAiSummary(`Queued AI job ${result.jobId.slice(0, 12)}...`);
+      watchAiJob(result.jobId);
+    } catch (err) {
+      closeAiEvents();
+      setError(err.message || String(err));
+      setIsAiEditing(false);
+    }
+  }
 
-      setFiles(nextFiles);
-      setActiveFile(nextActiveFile);
-      setPreview(html);
-      setAiSummary(result.summary || "AI edit completed.");
-      setAiInstruction("");
-      setDeployResult(null);
-      setSavedVersion(null);
-      setSelectedVersion("current");
+  async function cancelAiJob() {
+    if (!aiJob?.jobId || !isAiEditing) return;
+
+    try {
+      setAiSummary("Cancelling AI job...");
+      const response = await fetch(apiUrl(`/api/ai/jobs/${aiJob.jobId}/cancel`), { method: "POST" });
+      const result = await readJsonResponse(response, "AI cancel failed");
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "AI cancel failed");
+      }
+      setAiJob(result.job);
     } catch (err) {
       setError(err.message || String(err));
-    } finally {
-      setIsAiEditing(false);
     }
   }
 
@@ -1625,6 +1768,8 @@ function App() {
   useEffect(() => {
     refreshProjectVersions();
   }, []);
+
+  useEffect(() => closeAiEvents, []);
 
   useEffect(() => {
     if (layoutMode === "classic") {
@@ -1997,6 +2142,18 @@ function App() {
                   disabled={isAiEditing}
                 />
                 <div className="ai-actions">
+                  {aiJob && (
+                    <span className="ai-job-status" title={aiJob.jobId || ""}>
+                      {aiJob.status}
+                      {Number.isFinite(aiJob.progress) ? ` ${aiJob.progress}%` : ""}
+                    </span>
+                  )}
+                  {isAiEditing && aiJob?.jobId && (
+                    <button type="button" className="ai-cancel-button" onClick={cancelAiJob}>
+                      <X size={16} />
+                      Cancel
+                    </button>
+                  )}
                   <button type="button" className="ai-undo-button" onClick={undoAiEdit} disabled={!aiSnapshot || isAiEditing}>
                     <RotateCcw size={16} />
                     Undo
