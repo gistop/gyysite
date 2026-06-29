@@ -37,7 +37,8 @@ Configure Cloudflare Pages with:
 
 - Build command: `npm run build`
 - Build output directory: `dist`
-- Environment variable: `VITE_API_BASE_URL=https://<your-worker-domain>`
+- Optional direct API route environment variable: `VITE_API_BASE_URL=https://<your-worker-domain>`
+- Pages Function binding route: service binding `API_WORKER` pointing to Worker `gyysite19-api`
 
 Configure the Worker secrets and variables for the features you use:
 
@@ -49,4 +50,4 @@ Configure the Worker secrets and variables for the features you use:
 - `CLOUDFLARE_API_TOKEN`
 - R2 variables if asset upload is enabled
 
-The Docker deployment can continue to use same-origin `/api`; the Cloudflare Pages deployment should point `VITE_API_BASE_URL` at the independent Worker.
+The Docker deployment can continue to use same-origin `/api`. The Cloudflare Pages deployment can either point `VITE_API_BASE_URL` at the independent Worker for direct API calls, or use the in-app `Pages Function binding` AI route to call `/api/ai/*` through the `API_WORKER` service binding.

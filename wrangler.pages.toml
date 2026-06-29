@@ -3,6 +3,10 @@ compatibility_date = "2026-06-27"
 pages_build_output_dir = "dist"
 
 [vars]
-# Set this in Cloudflare Pages to the deployed Worker API origin.
+# Optional direct API origin for the "Direct API/Worker" AI route.
 # Example: https://gyysite-api.your-subdomain.workers.dev
 VITE_API_BASE_URL = ""
+
+[[services]]
+binding = "API_WORKER"
+service = "gyysite19-api"

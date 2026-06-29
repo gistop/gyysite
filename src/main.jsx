@@ -47,6 +47,10 @@ const runtimeConfig = {
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/g, "");
 const apiUrl = (path) => `${apiBaseUrl}${path}`;
+const aiApiModes = [
+  { key: "direct", label: "Direct API/Worker" },
+  { key: "pages-binding", label: "Pages Function binding" }
+];
 
 const deployTargets = [
   { key: "web", label: "Web Server", icon: HardDrive },
@@ -1225,6 +1229,10 @@ function App() {
   const [deployResult, setDeployResult] = useState(null);
   const [isEditorReady, setIsEditorReady] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
+  const [aiApiMode, setAiApiMode] = useState(() => {
+    const savedMode = window.localStorage.getItem("gyysite.aiApiMode");
+    return aiApiModes.some((mode) => mode.key === savedMode) ? savedMode : "direct";
+  });
   const [aiSummary, setAiSummary] = useState("");
   const [isAiEditing, setIsAiEditing] = useState(false);
   const [aiJob, setAiJob] = useState(null);
@@ -1267,6 +1275,7 @@ function App() {
           top: Math.max(8, editorPosition.y - (isMonacoVisible ? monacoPanelOffset : 0))
         }
       : undefined;
+  const aiApiUrl = (path) => (aiApiMode === "pages-binding" ? path : apiUrl(path));
 
   function toggleCombinedPanel() {
     const shouldOpen = !isCombinedPanelOpen;
@@ -1574,6 +1583,11 @@ function App() {
     }
   }
 
+  function changeAiApiMode(nextMode) {
+    setAiApiMode(nextMode);
+    window.localStorage.setItem("gyysite.aiApiMode", nextMode);
+  }
+
   async function handleFinishedAiJob(jobId, job) {
     closeAiEvents();
     setAiJob(job);
@@ -1592,7 +1606,7 @@ function App() {
 
     aiPollRef.current = window.setInterval(async () => {
       try {
-        const response = await fetch(apiUrl(`/api/ai/jobs/${jobId}`));
+        const response = await fetch(aiApiUrl(`/api/ai/jobs/${jobId}`));
         const result = await readJsonResponse(response, "AI job status failed");
         if (!response.ok || !result.ok) throw new Error(result.error || "AI job status failed");
 
@@ -1637,7 +1651,7 @@ function App() {
   }
 
   async function loadAiJobResult(jobId, fallbackSummary) {
-    const response = await fetch(apiUrl(`/api/ai/jobs/${jobId}/result`));
+    const response = await fetch(aiApiUrl(`/api/ai/jobs/${jobId}/result`));
     const result = await readJsonResponse(response, "AI edit result failed");
 
     if (!response.ok || !result.ok) {
@@ -1650,7 +1664,7 @@ function App() {
   function watchAiJob(jobId) {
     closeAiEvents();
 
-    const source = new EventSource(apiUrl(`/api/ai/jobs/${jobId}/events`));
+    const source = new EventSource(aiApiUrl(`/api/ai/jobs/${jobId}/events`));
     aiEventSourceRef.current = source;
 
     const handleProgress = (event) => {
@@ -1706,7 +1720,7 @@ function App() {
     setAiSnapshot({ files, activeFile, preview });
 
     try {
-      const response = await fetch(apiUrl("/api/ai/jobs"), {
+      const response = await fetch(aiApiUrl("/api/ai/jobs"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -1738,7 +1752,7 @@ function App() {
 
     try {
       setAiSummary("Cancelling AI job...");
-      const response = await fetch(apiUrl(`/api/ai/jobs/${aiJob.jobId}/cancel`), { method: "POST" });
+      const response = await fetch(aiApiUrl(`/api/ai/jobs/${aiJob.jobId}/cancel`), { method: "POST" });
       const result = await readJsonResponse(response, "AI cancel failed");
       if (!response.ok || !result.ok) {
         throw new Error(result.error || "AI cancel failed");
@@ -2162,6 +2176,16 @@ function App() {
                     {isAiEditing ? <Loader2 size={16} className="spin" /> : <Bot size={16} />}
                     {isAiEditing ? "Editing" : "Ask AI"}
                   </button>
+                  <label className="ai-route-select">
+                    <span>AI Route</span>
+                    <select value={aiApiMode} onChange={(event) => changeAiApiMode(event.target.value)} disabled={isAiEditing}>
+                      {aiApiModes.map((mode) => (
+                        <option key={mode.key} value={mode.key}>
+                          {mode.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               </div>
             </div>
