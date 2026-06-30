@@ -1237,6 +1237,8 @@ function App() {
   const [isAiEditing, setIsAiEditing] = useState(false);
   const [aiJob, setAiJob] = useState(null);
   const [aiSnapshot, setAiSnapshot] = useState(null);
+  const [aiWizard, setAiWizard] = useState(null);
+  const [aiSelections, setAiSelections] = useState({});
   const [leftPanelTab, setLeftPanelTab] = useState("project");
   const [isAssetUploading, setIsAssetUploading] = useState(false);
   const [assetError, setAssetError] = useState("");
@@ -1588,6 +1590,56 @@ function App() {
     window.localStorage.setItem("gyysite.aiApiMode", nextMode);
   }
 
+  function updateAiSelection(control, option) {
+    setAiSelections((current) => {
+      if (control.type === "multi_select") {
+        const selected = Array.isArray(current[control.key]) ? current[control.key] : [];
+        const nextSelected = selected.includes(option) ? selected.filter((item) => item !== option) : [...selected, option];
+        return {
+          ...current,
+          [control.key]: nextSelected
+        };
+      }
+
+      return {
+        ...current,
+        [control.key]: option
+      };
+    });
+  }
+
+  function isAiOptionSelected(control, option) {
+    const value = aiSelections[control.key];
+    return control.type === "multi_select" ? Array.isArray(value) && value.includes(option) : value === option;
+  }
+
+  async function createAiJob(instruction, summary = "Creating AI job...") {
+    setAiSummary(summary);
+    setAiJob(null);
+    setAiSnapshot({ files, activeFile, preview });
+
+    const response = await fetch(aiApiUrl("/api/ai/jobs"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        instruction,
+        activeFile,
+        files
+      })
+    });
+    const result = await readJsonResponse(response, "AI edit failed");
+
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error || "AI edit failed");
+    }
+
+    setAiJob(result);
+    setAiSummary(`Queued AI job ${result.jobId.slice(0, 12)}...`);
+    watchAiJob(result.jobId);
+  }
+
   async function handleFinishedAiJob(jobId, job) {
     closeAiEvents();
     setAiJob(job);
@@ -1644,6 +1696,8 @@ function App() {
     setPreview(html);
     setAiSummary(result.summary || fallbackSummary || "AI edit completed.");
     setAiInstruction("");
+    setAiWizard(null);
+    setAiSelections({});
     setAiJob(null);
     setDeployResult(null);
     setSavedVersion(null);
@@ -1704,42 +1758,60 @@ function App() {
     pollAiJob(jobId);
   }
 
-  async function editHtmlWithAi() {
+  async function askAi() {
     if (mode !== "html" || isAiEditing) return;
 
     const instruction = aiInstruction.trim();
-    if (!instruction) {
-      setError("Describe the change you want AI to make first.");
+    const hasSelections = Object.values(aiSelections).some((value) => (Array.isArray(value) ? value.length > 0 : Boolean(value)));
+    if (!instruction && !hasSelections) {
+      setError("Describe what you want to build or change first.");
       return;
     }
 
     setIsAiEditing(true);
     setError("");
-    setAiSummary("Creating AI job...");
-    setAiJob(null);
-    setAiSnapshot({ files, activeFile, preview });
+    setAiSummary("Understanding request...");
 
     try {
-      const response = await fetch(aiApiUrl("/api/ai/jobs"), {
+      const response = await fetch(aiApiUrl("/api/ai/ask"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          instruction,
-          activeFile,
-          files
+          message: instruction,
+          selections: aiSelections,
+          wizard: aiWizard
         })
       });
-      const result = await readJsonResponse(response, "AI edit failed");
+      const result = await readJsonResponse(response, "Ask AI failed");
 
       if (!response.ok || !result.ok) {
-        throw new Error(result.error || "AI edit failed");
+        throw new Error(result.error || "Ask AI failed");
       }
 
-      setAiJob(result);
-      setAiSummary(`Queued AI job ${result.jobId.slice(0, 12)}...`);
-      watchAiJob(result.jobId);
+      const nextWizard =
+        result.mode === "site_wizard"
+          ? {
+              mode: result.mode,
+              stage: result.stage,
+              message: result.message,
+              controls: Array.isArray(result.controls) ? result.controls : [],
+              brief: result.brief || {}
+            }
+          : null;
+
+      setAiWizard(nextWizard);
+      setAiSelections({});
+      setAiInstruction("");
+
+      if (result.action === "create_job" && result.instruction) {
+        await createAiJob(result.instruction, result.message || "Creating AI job...");
+        return;
+      }
+
+      setAiSummary(result.message || "Please continue the AI website brief.");
+      setIsAiEditing(false);
     } catch (err) {
       closeAiEvents();
       setError(err.message || String(err));
@@ -2128,7 +2200,7 @@ function App() {
               <div className="ai-title" onPointerDown={(event) => startFloatingDrag(event, editorPosition, setEditorPosition)}>
                 <span>
                   <Bot size={16} />
-                  AI Edit HTML
+                  Ask AI
                 </span>
                 {aiSummary && <span className="ai-summary">{aiSummary}</span>}
                 {layoutMode === "preview" && (
@@ -2148,13 +2220,43 @@ function App() {
                 )}
               </div>
               <div className="ai-controls">
-                <textarea
-                  value={aiInstruction}
-                  onChange={(event) => setAiInstruction(event.target.value)}
-                  placeholder="Describe the HTML change you want AI to make"
-                  rows={3}
-                  disabled={isAiEditing}
-                />
+                <div className="ai-prompt-stack">
+                  {aiWizard?.message && (
+                    <div className="ai-wizard-message">
+                      <Bot size={15} />
+                      <span>{aiWizard.message}</span>
+                    </div>
+                  )}
+                  {aiWizard?.controls?.length > 0 && (
+                    <div className="ai-wizard-controls">
+                      {aiWizard.controls.map((control) => (
+                        <div className="ai-wizard-control" key={control.key}>
+                          <div className="ai-wizard-label">{control.label}</div>
+                          <div className="ai-option-grid">
+                            {control.options.map((option) => (
+                              <button
+                                type="button"
+                                className={isAiOptionSelected(control, option) ? "selected" : ""}
+                                key={option}
+                                onClick={() => updateAiSelection(control, option)}
+                                disabled={isAiEditing}
+                              >
+                                {option}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <textarea
+                    value={aiInstruction}
+                    onChange={(event) => setAiInstruction(event.target.value)}
+                    placeholder="Describe what you want to build or change"
+                    rows={3}
+                    disabled={isAiEditing}
+                  />
+                </div>
                 <div className="ai-actions">
                   {aiJob && (
                     <span className="ai-job-status" title={aiJob.jobId || ""}>
@@ -2172,9 +2274,9 @@ function App() {
                     <RotateCcw size={16} />
                     Undo
                   </button>
-                  <button type="button" className="ai-edit-button" onClick={editHtmlWithAi} disabled={isAiEditing}>
+                  <button type="button" className="ai-edit-button" onClick={askAi} disabled={isAiEditing}>
                     {isAiEditing ? <Loader2 size={16} className="spin" /> : <Bot size={16} />}
-                    {isAiEditing ? "Editing" : "Ask AI"}
+                    {isAiEditing ? "Working" : "Ask AI"}
                   </button>
                   <label className="ai-route-select">
                     <span>AI Route</span>

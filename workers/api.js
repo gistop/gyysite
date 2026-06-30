@@ -178,6 +178,186 @@ function parseJsonObject(content) {
   }
 }
 
+function arrayValue(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()) : [];
+}
+
+function stringValue(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeWizardBrief(input) {
+  const brief = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  return {
+    intent: stringValue(brief.intent),
+    siteType: stringValue(brief.siteType),
+    industry: stringValue(brief.industry),
+    pages: arrayValue(brief.pages),
+    language: stringValue(brief.language),
+    style: stringValue(brief.style),
+    goal: stringValue(brief.goal)
+  };
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function mergeWizardInput(brief, message, selections = {}) {
+  const next = { ...normalizeWizardBrief(brief) };
+  const text = stringValue(message);
+  const lower = text.toLowerCase();
+  const selectedIndustry = stringValue(selections.industry);
+
+  if (stringValue(selections.siteType)) next.siteType = stringValue(selections.siteType);
+  if (selectedIndustry) {
+    if (selectedIndustry.includes("机械")) next.industry = "机械类";
+    else if (selectedIndustry.includes("官网") || selectedIndustry.includes("网站")) next.siteType = selectedIndustry;
+    else next.industry = selectedIndustry;
+    if (selectedIndustry.includes("外贸")) next.siteType = "外贸官网";
+  }
+  if (arrayValue(selections.pages).length) next.pages = uniqueStrings(arrayValue(selections.pages));
+  if (stringValue(selections.language)) next.language = stringValue(selections.language);
+  if (stringValue(selections.style)) next.style = stringValue(selections.style);
+  if (stringValue(selections.goal)) next.goal = stringValue(selections.goal);
+
+  if (!next.siteType) {
+    if (text.includes("外贸")) next.siteType = "外贸官网";
+    else if (text.includes("企业")) next.siteType = "企业官网";
+    else if (text.includes("品牌")) next.siteType = "品牌官网";
+    else if (text.includes("网站") || lower.includes("website")) next.siteType = "企业官网";
+  }
+
+  if (!next.industry) {
+    if (text.includes("机械")) next.industry = "机械类";
+    else if (text.includes("五金")) next.industry = "五金类";
+    else if (text.includes("服装")) next.industry = "服装类";
+    else if (text.includes("家具")) next.industry = "家具类";
+    else if (text.includes("化工")) next.industry = "化工类";
+    else if (text.includes("电子")) next.industry = "电子类";
+    else if (text && !text.includes("生成") && !text.includes("做") && !text.includes("建")) next.industry = text.slice(0, 40);
+  }
+
+  if (!next.language) {
+    if (text.includes("英文") || lower.includes("english")) next.language = "英文";
+    else if (text.includes("中文")) next.language = "中文";
+  }
+
+  if (!next.style) {
+    if (text.includes("工业")) next.style = "工业风、专业、可信";
+    else if (text.includes("简洁")) next.style = "简洁现代";
+    else if (text.includes("高端")) next.style = "高端品牌感";
+  }
+
+  if (!next.goal) {
+    if (text.includes("询盘") || text.includes("外贸")) next.goal = "获取询盘";
+    else if (text.includes("展示")) next.goal = "展示品牌和产品";
+  }
+
+  return next;
+}
+
+function wizardControls(type, key, label, options) {
+  return [{ type, key, label, options }];
+}
+
+function defaultPagesForBrief(brief) {
+  if (brief.siteType.includes("外贸") || brief.industry.includes("机械")) {
+    return ["首页", "产品介绍", "产品详情", "应用行业", "工厂实力", "关于我们", "联系我们", "FAQ"];
+  }
+  return ["首页", "产品介绍", "服务介绍", "案例展示", "关于我们", "联系我们"];
+}
+
+function buildSiteWizardInstruction(brief) {
+  const pages = brief.pages.length ? brief.pages.join("、") : "首页、产品介绍、关于我们、联系我们";
+  return [
+    "请根据以下结构化建站需求，从零生成一个正式商用级静态网站，并替换当前 HTML 项目。",
+    `网站类型：${brief.siteType || "企业官网"}`,
+    `行业：${brief.industry || "通用企业"}`,
+    `页面：首页必须可访问；整体页面结构包含：${pages}`,
+    `语言：${brief.language || "英文"}`,
+    `视觉风格：${brief.style || "专业、可信、现代"}`,
+    `转化目标：${brief.goal || "获取客户咨询"}`,
+    "要求：生成完整 index.html、styles.css 和必要 script.js；代码可直接在浏览器运行；导航、首屏、产品/服务区、信任背书、联系表单和页脚要完整；不要使用远程脚本依赖；文案要符合正式商业网站。"
+  ].join("\n");
+}
+
+function handleAskAiWizard(body) {
+  const message = stringValue(body?.message);
+  const current = body?.wizard && typeof body.wizard === "object" ? body.wizard : {};
+  const selections = body?.selections && typeof body.selections === "object" ? body.selections : {};
+  const currentMode = stringValue(current.mode);
+  const brief = mergeWizardInput(current.brief, message, selections);
+  const wantsBuild =
+    currentMode === "site_wizard" ||
+    message.includes("生成") ||
+    message.includes("建站") ||
+    message.includes("网站") ||
+    message.toLowerCase().includes("website");
+
+  if (!wantsBuild) {
+    return {
+      mode: "site_edit",
+      stage: "execute",
+      message: "已识别为修改当前网站，正在创建编辑任务。",
+      action: "create_job",
+      instruction: message,
+      brief: null,
+      controls: [],
+      canGenerate: true
+    };
+  }
+
+  if (!brief.industry) {
+    return {
+      mode: "site_wizard",
+      stage: "choose_industry",
+      message: "你想生成什么类型或行业的网站？",
+      brief: { ...brief, intent: "site_build" },
+      controls: wizardControls("single_select", "industry", "行业类型", ["机械类外贸网站", "企业官网", "品牌官网", "产品展示网站", "SaaS 软件网站"]),
+      canGenerate: false
+    };
+  }
+
+  if (!brief.pages.length) {
+    const options = defaultPagesForBrief(brief);
+    return {
+      mode: "site_wizard",
+      stage: "choose_pages",
+      message: `${brief.industry}${brief.siteType ? brief.siteType : "网站"}建议包含以下页面，请选择需要的页面。`,
+      brief: { ...brief, intent: "site_build" },
+      controls: wizardControls("multi_select", "pages", "页面结构", options),
+      canGenerate: false
+    };
+  }
+
+  if (!brief.language || !brief.style || !brief.goal) {
+    return {
+      mode: "site_wizard",
+      stage: "choose_profile",
+      message: "再确认网站语言、视觉风格和转化目标，确认后即可生成网站代码。",
+      brief: { ...brief, intent: "site_build" },
+      controls: [
+        { type: "single_select", key: "language", label: "网站语言", options: ["英文", "中文", "中英双语"] },
+        { type: "single_select", key: "style", label: "视觉风格", options: ["工业风、专业、可信", "简洁现代", "高端品牌感", "科技感"] },
+        { type: "single_select", key: "goal", label: "转化目标", options: ["获取询盘", "展示品牌和产品", "预约咨询", "下载资料"] }
+      ],
+      canGenerate: false
+    };
+  }
+
+  return {
+    mode: "site_wizard",
+    stage: "ready_to_generate",
+    message: "需求已清晰，正在创建网站生成任务。",
+    action: "create_job",
+    instruction: buildSiteWizardInstruction(brief),
+    brief: { ...brief, intent: "site_build" },
+    controls: [],
+    canGenerate: true
+  };
+}
+
 function encodeRfc3986(input) {
   return encodeURIComponent(input).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 }
@@ -1151,6 +1331,10 @@ async function handleApi(request, env) {
     if (target !== "cloudflare") throw new Error(`Unsupported deploy target: ${target}`);
     const githubResult = await publishGitHubSite(env, siteId, files);
     return json({ ok: true, target, siteId, ...githubResult, url: githubResult.cloudflareUrl || githubResult.githubCommitUrl });
+  }
+
+  if (method === "POST" && url.pathname === "/api/ai/ask") {
+    return json({ ok: true, ...handleAskAiWizard(await readJson(request)) }, 200, request, env);
   }
 
   if (method === "POST" && (url.pathname === "/api/ai/jobs" || url.pathname === "/api/ai/edit-html")) {

@@ -797,6 +797,78 @@ button {
   padding: 10px 12px 12px;
 }
 
+.ai-prompt-stack {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.ai-wizard-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.ai-wizard-message svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.ai-wizard-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-wizard-control {
+  display: grid;
+  gap: 7px;
+}
+
+.ai-wizard-label {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-option-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.ai-option-grid button {
+  min-height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ai-option-grid button:hover:not(:disabled),
+.ai-option-grid button.selected {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.ai-option-grid button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .ai-controls textarea {
   width: 100%;
   min-height: 74px;
