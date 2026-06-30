@@ -844,9 +844,10 @@ async function ensureEsbuild() {
 
 function makeHtmlPreview(files, entry) {
   let html = files[entry] ?? files["index.html"] ?? "";
+  const cssFile = files["style.css"] != null ? "style.css" : "styles.css";
   html = html.replace(
-    /<link\s+[^>]*href=["']\.\/style\.css["'][^>]*>/i,
-    `<style>${files["style.css"] ?? ""}</style>`
+    /<link\s+[^>]*href=["'](?:\.\/)?styles?\.css["'][^>]*>/i,
+    `<style>${files[cssFile] ?? ""}</style>`
   );
   html = html.replace(
     /<script\s+[^>]*src=["']\.\/script\.js["'][^>]*><\/script>/i,
@@ -1239,6 +1240,7 @@ function App() {
   const [aiSnapshot, setAiSnapshot] = useState(null);
   const [aiWizard, setAiWizard] = useState(null);
   const [aiSelections, setAiSelections] = useState({});
+  const [aiMessages, setAiMessages] = useState([]);
   const [leftPanelTab, setLeftPanelTab] = useState("project");
   const [isAssetUploading, setIsAssetUploading] = useState(false);
   const [assetError, setAssetError] = useState("");
@@ -1262,6 +1264,7 @@ function App() {
   const [toolbarPosition, setToolbarPosition] = useState({ x: 18, y: 18 });
   const [editorPosition, setEditorPosition] = useState({ x: 84, y: 548 });
   const frameRef = useRef(null);
+  const aiHistoryRef = useRef(null);
   const aiEventSourceRef = useRef(null);
   const aiPollRef = useRef(null);
 
@@ -1269,7 +1272,7 @@ function App() {
   const previewSandbox =
     mode === "html" || runtimeConfig.dependencySource !== "local" ? "allow-scripts" : "allow-scripts allow-same-origin";
   const isCombinedPanelOpen = isFloatingEditorOpen || isFloatingAiOpen;
-  const monacoPanelOffset = 462;
+  const monacoPanelOffset = 392;
   const combinedPanelStyle =
     layoutMode === "preview"
       ? {
@@ -1278,6 +1281,11 @@ function App() {
         }
       : undefined;
   const aiApiUrl = (path) => (aiApiMode === "pages-binding" ? path : apiUrl(path));
+
+  useEffect(() => {
+    if (!aiHistoryRef.current) return;
+    aiHistoryRef.current.scrollTop = aiHistoryRef.current.scrollHeight;
+  }, [aiMessages]);
 
   function toggleCombinedPanel() {
     const shouldOpen = !isCombinedPanelOpen;
@@ -1585,6 +1593,29 @@ function App() {
     }
   }
 
+  function addAiMessage(role, content) {
+    const message = String(content || "").trim();
+    if (!message) return;
+    setAiMessages((current) => [
+      ...current,
+      {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        role,
+        content: message
+      }
+    ]);
+  }
+
+  function formatAiSelections(selections) {
+    return Object.entries(selections)
+      .filter(([, value]) => (Array.isArray(value) ? value.length > 0 : Boolean(value)))
+      .map(([key, value]) => {
+        const text = Array.isArray(value) ? value.join(", ") : value;
+        return `${key}: ${text}`;
+      })
+      .join("\n");
+  }
+
   function changeAiApiMode(nextMode) {
     setAiApiMode(nextMode);
     window.localStorage.setItem("gyysite.aiApiMode", nextMode);
@@ -1674,6 +1705,7 @@ function App() {
         } else if (job?.status === "cancelled") {
           closeAiEvents();
           setAiSummary("AI edit cancelled.");
+          addAiMessage("assistant", "AI edit cancelled.");
           setIsAiEditing(false);
         }
       } catch (err) {
@@ -1694,7 +1726,9 @@ function App() {
     setFiles(nextFiles);
     setActiveFile(nextActiveFile);
     setPreview(html);
-    setAiSummary(result.summary || fallbackSummary || "AI edit completed.");
+    const summary = result.summary || fallbackSummary || "AI edit completed.";
+    setAiSummary(summary);
+    addAiMessage("assistant", summary);
     setAiInstruction("");
     setAiWizard(null);
     setAiSelections({});
@@ -1735,6 +1769,7 @@ function App() {
       closeAiEvents();
       setAiJob(data);
       setAiSummary("AI edit cancelled.");
+      addAiMessage("assistant", "AI edit cancelled.");
       setIsAiEditing(false);
     });
 
@@ -1771,6 +1806,7 @@ function App() {
     setIsAiEditing(true);
     setError("");
     setAiSummary("Understanding request...");
+    addAiMessage("user", instruction || formatAiSelections(aiSelections));
 
     try {
       const response = await fetch(aiApiUrl("/api/ai/ask"), {
@@ -1806,11 +1842,14 @@ function App() {
       setAiInstruction("");
 
       if (result.action === "create_job" && result.instruction) {
+        addAiMessage("assistant", result.message || "Creating AI job...");
         await createAiJob(result.instruction, result.message || "Creating AI job...");
         return;
       }
 
-      setAiSummary(result.message || "Please continue the AI website brief.");
+      const assistantMessage = result.message || "Please continue the AI website brief.";
+      setAiSummary(assistantMessage);
+      addAiMessage("assistant", assistantMessage);
       setIsAiEditing(false);
     } catch (err) {
       closeAiEvents();
@@ -1842,6 +1881,7 @@ function App() {
     setActiveFile(aiSnapshot.activeFile);
     setPreview(aiSnapshot.preview);
     setAiSummary("Last AI edit was undone.");
+    addAiMessage("assistant", "Last AI edit was undone.");
     setAiSnapshot(null);
     setSavedVersion(null);
     setSelectedVersion("current");
@@ -2221,12 +2261,24 @@ function App() {
               </div>
               <div className="ai-controls">
                 <div className="ai-prompt-stack">
-                  {aiWizard?.message && (
-                    <div className="ai-wizard-message">
-                      <Bot size={15} />
-                      <span>{aiWizard.message}</span>
-                    </div>
-                  )}
+                  <div className="ai-chat-history" ref={aiHistoryRef}>
+                    {aiMessages.length > 0 ? (
+                      aiMessages.map((message) => (
+                        <div className={`ai-chat-message ${message.role}`} key={message.id}>
+                          {message.role === "assistant" && <Bot size={15} />}
+                          <span>{message.content}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="ai-chat-empty">Start by describing what you want to build or change.</div>
+                    )}
+                    {isAiEditing && (
+                      <div className="ai-chat-message assistant muted-message">
+                        <Loader2 size={15} className="spin" />
+                        <span>{aiSummary || "Working..."}</span>
+                      </div>
+                    )}
+                  </div>
                   {aiWizard?.controls?.length > 0 && (
                     <div className="ai-wizard-controls">
                       {aiWizard.controls.map((control) => (
